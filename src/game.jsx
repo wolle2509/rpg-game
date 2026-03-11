@@ -161,16 +161,44 @@ const SPRITE_TILE = Math.round(256 * SPRITE_SCALE);
 const SPRITE_PAD = Math.round(2 * SPRITE_SCALE);
 const SPRITE_COLS = 9;
 
-// Sprite key → grid position (row, col)
+// Sprite key → pixel position in spritesheet { x, y, w, h }
 const SPRITE_MAP = {
-  ember_drake: [0,0], man_eater: [0,1], orc_warchief: [0,2], dusk_harpy: [0,3],
-  imp_cutlass: [0,4], pyre_tortoise: [0,5], venom_snail: [0,6], ghastly: [0,7], moth: [0,8],
-  bog_frog: [1,0], flame_knight: [1,1], bramble_boar: [1,2], brutal_ogre: [1,3],
-  lava_scorpion: [1,4], goblin_warlock: [1,5], scarab_tank: [1,6], ice_ogre: [1,7], cursed_mummy: [1,8],
-  basilisk: [2,0], rock_golem: [2,1], ashen_roc: [2,2], sea_serpent: [2,3],
-  mimic_chest: [2,4], eye_abomination: [2,5], moss_bear: [2,6], bog_treant: [2,7], toadstool_shaman: [2,8],
-  vine_serpent: [3,0], moss_beetle: [3,1], forest_dryad: [3,2], leaf_goblin: [3,3],
-  twin_flytraps: [3,4], mushroom_squirrels: [3,5], slime_snail_forest: [3,6], twig_trickster: [3,7], wasp_scout: [3,8],
+  "ember_drake": { x: 2, y: 2, w: 256, h: 256 },
+  "man_eater": { x: 262, y: 2, w: 256, h: 256 },
+  "orc_warchief": { x: 522, y: 2, w: 256, h: 256 },
+  "dusk_harpy": { x: 782, y: 2, w: 256, h: 256 },
+  "imp_cutlass": { x: 1042, y: 2, w: 256, h: 256 },
+  "pyre_tortoise": { x: 1302, y: 2, w: 256, h: 256 },
+  "venom_snail": { x: 1562, y: 2, w: 256, h: 256 },
+  "ghastly": { x: 1822, y: 2, w: 256, h: 256 },
+  "moth": { x: 2082, y: 2, w: 256, h: 256 },
+  "bog_frog": { x: 2, y: 262, w: 256, h: 256 },
+  "flame_knight": { x: 262, y: 262, w: 256, h: 256 },
+  "bramble_boar": { x: 522, y: 262, w: 256, h: 256 },
+  "brutal_ogre": { x: 782, y: 262, w: 256, h: 256 },
+  "lava_scorpion": { x: 1042, y: 262, w: 256, h: 256 },
+  "goblin_warlock": { x: 1302, y: 262, w: 256, h: 256 },
+  "scarab_tank": { x: 1562, y: 262, w: 256, h: 256 },
+  "ice_ogre": { x: 1822, y: 262, w: 256, h: 256 },
+  "cursed_mummy": { x: 2082, y: 262, w: 256, h: 256 },
+  "basilisk": { x: 2, y: 522, w: 256, h: 256 },
+  "rock_golem": { x: 262, y: 522, w: 256, h: 256 },
+  "ashen_roc": { x: 522, y: 522, w: 256, h: 256 },
+  "sea_serpent": { x: 782, y: 522, w: 256, h: 256 },
+  "mimic_chest": { x: 1042, y: 522, w: 256, h: 256 },
+  "eye_abomination": { x: 1302, y: 522, w: 256, h: 256 },
+  "moss_bear": { x: 1562, y: 522, w: 256, h: 256 },
+  "bog_treant": { x: 1822, y: 522, w: 256, h: 256 },
+  "toadstool_shaman": { x: 2082, y: 522, w: 256, h: 256 },
+  "vine_serpent": { x: 2, y: 782, w: 256, h: 256 },
+  "moss_beetle": { x: 262, y: 782, w: 256, h: 256 },
+  "forest_dryad": { x: 522, y: 782, w: 256, h: 256 },
+  "leaf_goblin": { x: 782, y: 782, w: 256, h: 256 },
+  "twin_flytraps": { x: 1042, y: 782, w: 256, h: 256 },
+  "mushroom_squirrels": { x: 1302, y: 782, w: 256, h: 256 },
+  "slime_snail_forest": { x: 1562, y: 782, w: 256, h: 256 },
+  "twig_trickster": { x: 1822, y: 782, w: 256, h: 256 },
+  "wasp_scout": { x: 2082, y: 782, w: 256, h: 256 },
 };
 
 const BIOME_BOSSES = {
@@ -1886,13 +1914,11 @@ function SpriteImage({ spriteKey, size = 80, spriteSheetUrl }) {
       const ctx = canvasRef.current.getContext("2d");
       const pos = SPRITE_MAP[spriteKey];
       if (!pos) return;
-      const [row, col] = pos;
-      const sx = Math.round(col * SPRITE_CELL + SPRITE_PAD);
-      const sy = Math.round(row * SPRITE_CELL + SPRITE_PAD);
+      const { x, y, w, h } = pos;  // ← Pixel positions!
       canvasRef.current.width = size;
       canvasRef.current.height = size;
       ctx.clearRect(0, 0, size, size);
-      ctx.drawImage(sheet, sx, sy, SPRITE_TILE, SPRITE_TILE, 0, 0, size, size);
+      ctx.drawImage(sheet, x, y, w, h, 0, 0, size, size);  // ← Use x, y, w, h directly
     });
   }, [spriteKey, size, spriteSheetUrl]);
 
@@ -1901,13 +1927,11 @@ function SpriteImage({ spriteKey, size = 80, spriteSheetUrl }) {
     const ctx = canvasRef.current.getContext("2d");
     const pos = SPRITE_MAP[spriteKey];
     if (!pos) return;
-    const [row, col] = pos;
-    const sx = Math.round(col * SPRITE_CELL + SPRITE_PAD);
-    const sy = Math.round(row * SPRITE_CELL + SPRITE_PAD);
+    const { x, y, w, h } = pos;  // ← Pixel positions!
     canvasRef.current.width = size;
     canvasRef.current.height = size;
     ctx.clearRect(0, 0, size, size);
-    ctx.drawImage(_spriteCanvas, sx, sy, SPRITE_TILE, SPRITE_TILE, 0, 0, size, size);
+    ctx.drawImage(_spriteCanvas, x, y, w, h, 0, 0, size, size);  // ← Use x, y, w, h directly
   }, [loaded, spriteKey, size]);
 
   return <canvas ref={canvasRef} width={size} height={size} style={{ width: size, height: size, imageRendering: "pixelated" }} />;
@@ -2122,8 +2146,51 @@ function Game({ playerData }) {
   const isLoaded = !playerData.isNew && playerData.worldSeed != null;
   const playerName = playerData.name || playerData.playerName;
   const initialAttrs = playerData.attrs || playerData.attributes;
-  const spriteSheetUrl = "monster_spritesheet.png";
-  const heroUrl = "hero_sprite.png";
+// ✅ EMBEDDED SPRITE DATA - Base64 encoded PNG
+const SPRITE_SHEET_BASE64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAACSQAAAQQCAYAAADx6ce1AAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4aWYAAHjabVDRDUMhCPx3io4gHiqOY/tek27Q8YuCybPtJR4nKJ6E8/16httAIg6cq5RWSlRw45a6ComGPpkiT55IHJtnt3zQyHZCU9AIK0ixSCvvF1akripfGsnDC/e90NgdyFejZAHD0dCHN2reCMkK5A26fSuWJvX6hfsZd4itMIhlt/2zrzq9I+s7SOkEISoDbAYwVgnoKjA560FCVU1g5YzlRAfyb04L4QPxHlkgWT1EmAAAAYVpQ0NQSUNDIHByb2ZpbGUAAHicfZG9S8NQFMVPU0tFKh3sIOIQpDrZRUUcSxWLYKG0FVp1MHnpFzRpSFJcHAXXgoMfi1UHF2ddHVwFQfADxD9AnBRdpMT7kkKLGC883o/z7jm8dx8gtGpMNfvigKpZRiaZEPOFVTH4Cj8CCMOHMYmZ";
+
+// ✅ SPRITE MAP from JSON - Maps sprite keys to grid positions
+const SPRITE_MAP = {
+  "ember_drake": { row: 0, col: 0 },
+  "man_eater": { row: 0, col: 1 },
+  "orc_warchief": { row: 0, col: 2 },
+  "dusk_harpy": { row: 0, col: 3 },
+  "imp_cutlass": { row: 0, col: 4 },
+  "pyre_tortoise": { row: 0, col: 5 },
+  "venom_snail": { row: 0, col: 6 },
+  "ghastly": { row: 0, col: 7 },
+  "moth": { row: 0, col: 8 },
+  "bog_frog": { row: 1, col: 0 },
+  "flame_knight": { row: 1, col: 1 },
+  "bramble_boar": { row: 1, col: 2 },
+  "brutal_ogre": { row: 1, col: 3 },
+  "lava_scorpion": { row: 1, col: 4 },
+  "goblin_warlock": { row: 1, col: 5 },
+  "scarab_tank": { row: 1, col: 6 },
+  "ice_ogre": { row: 1, col: 7 },
+  "cursed_mummy": { row: 1, col: 8 },
+  "basilisk": { row: 2, col: 0 },
+  "rock_golem": { row: 2, col: 1 },
+  "ashen_roc": { row: 2, col: 2 },
+  "sea_serpent": { row: 2, col: 3 },
+  "mimic_chest": { row: 2, col: 4 },
+  "eye_abomination": { row: 2, col: 5 },
+  "moss_bear": { row: 2, col: 6 },
+  "bog_treant": { row: 2, col: 7 },
+  "toadstool_shaman": { row: 2, col: 8 },
+  "vine_serpent": { row: 3, col: 0 },
+  "moss_beetle": { row: 3, col: 1 },
+  "forest_dryad": { row: 3, col: 2 },
+  "leaf_goblin": { row: 3, col: 3 },
+  "twin_flytraps": { row: 3, col: 4 },
+  "mushroom_squirrels": { row: 3, col: 5 },
+  "slime_snail_forest": { row: 3, col: 6 },
+  "twig_trickster": { row: 3, col: 7 },
+  "wasp_scout": { row: 3, col: 8 },
+};
+
+const spriteSheetUrl = SPRITE_SHEET_BASE64;  // ✅ Eingebettet!
+const heroUrl = "hero_sprite.png";
   const currentSlot = playerData.selectedSlot ?? 0;  // ✅ Get slot number
 
   const [worldSeed] = useState(() => isLoaded ? playerData.worldSeed : Math.floor(Math.random() * 99999));
@@ -5949,3 +6016,4 @@ export default function RPGGame() {
     </>
   );
 }
+
