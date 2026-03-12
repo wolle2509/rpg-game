@@ -459,33 +459,33 @@ function generateBossLoot(chunkLevelRange, biome, seed, isFromBossCave = true) {
 
 const MERCHANT_ITEMS = {
   Beginner: [
-    { name: "Healing Potion", cost: 5, type: "consumable", effect: "heal", value: 30 },
+    { name: "Healing Potion", cost: 5, type: "consumable", effect: "heal", value: 30, healPercent: 0.5 },
     { name: "Minor Antidote", cost: 8, type: "consumable", effect: "heal", value: 20 },
     { name: "Bread Loaf", cost: 3, type: "consumable", effect: "heal", value: 15 },
     { name: "Stealth Potion", cost: 15, type: "consumable", effect: "repel", value: 20 },
   ],
   Easy: [
-    { name: "Greater Healing Potion", cost: 15, type: "consumable", effect: "heal", value: 50 },
+    { name: "Greater Healing Potion", cost: 15, type: "consumable", effect: "heal", value: 50, healPercent: 0.5 },
     { name: "Stamina Elixir", cost: 20, type: "consumable", effect: "heal", value: 40 },
     { name: "Cure Poison", cost: 12, type: "consumable", effect: "heal", value: 30 },
     { name: "Stealth Potion", cost: 30, type: "consumable", effect: "repel", value: 20 },
   ],
   Intermediate: [
-    { name: "Superior Healing Potion", cost: 40, type: "consumable", effect: "heal", value: 80 },
+    { name: "Superior Healing Potion", cost: 40, type: "consumable", effect: "heal", value: 80, healPercent: 0.5 },
     { name: "Mana Potion", cost: 35, type: "consumable", effect: "heal", value: 70 },
     { name: "Rejuvenation Brew", cost: 50, type: "consumable", effect: "heal", value: 90 },
     { name: "Stealth Potion", cost: 60, type: "consumable", effect: "repel", value: 20 },
   ],
   Hard: [
-    { name: "Elixir of Power", cost: 100, type: "consumable", effect: "heal", value: 120 },
-    { name: "Essence of Life", cost: 120, type: "consumable", effect: "heal", value: 150 },
-    { name: "Twilight Draught", cost: 110, type: "consumable", effect: "heal", value: 140 },
+    { name: "Elixir of Power", cost: 100, type: "consumable", effect: "heal", value: 120, healPercent: 0.5 },
+    { name: "Essence of Life", cost: 120, type: "consumable", effect: "heal", value: 150, healPercent: 0.5 },
+    { name: "Twilight Draught", cost: 110, type: "consumable", effect: "heal", value: 140, healPercent: 0.5 },
     { name: "Stealth Potion", cost: 120, type: "consumable", effect: "repel", value: 20 },
   ],
   Expert: [
-    { name: "Divine Elixir", cost: 250, type: "consumable", effect: "heal", value: 200 },
-    { name: "Immortal Nectar", cost: 300, type: "consumable", effect: "heal", value: 250 },
-    { name: "Essence of Eternity", cost: 280, type: "consumable", effect: "heal", value: 220 },
+    { name: "Divine Elixir", cost: 250, type: "consumable", effect: "heal", value: 200, healPercent: 0.5 },
+    { name: "Immortal Nectar", cost: 300, type: "consumable", effect: "heal", value: 250, healPercent: 0.5 },
+    { name: "Essence of Eternity", cost: 280, type: "consumable", effect: "heal", value: 220, healPercent: 0.5 },
     { name: "Stealth Potion", cost: 200, type: "consumable", effect: "repel", value: 20 },
   ],
 };
@@ -533,7 +533,7 @@ function generateMerchantPotions(itemLevel) {
       cost: cost,
       type: "consumable",
       effect: "heal",
-      value: baseHeal,
+      healPercent: 0.5,  // ✅ NEW: Immer 50% max HP, nicht basierend auf itemLevel!
     },
     {
       name: stealthName,
@@ -1312,17 +1312,21 @@ function applyBiomeMultiplier(stats, biome) {
   };
 }
 
-function generateChunkCaves(chunkX, chunkY, seed, cities, existingCaves) {
-  const rng = seededRandom(seed + 77777 + chunkX * 3571 + chunkY * 4219);
-  const x0 = chunkX * CHUNK_SIZE, y0 = chunkY * CHUNK_SIZE;
-  const x1 = Math.min(x0 + CHUNK_SIZE, WORLD_SIZE - 4);
-  const y1 = Math.min(y0 + CHUNK_SIZE, WORLD_SIZE - 4);
-  const step = Math.max(1, Math.floor(CHUNK_SIZE / 16));
+function generateRegionCaves(regionId, seed, cities, existingCaves) {
+  const region = CHUNK_TIERS.find(c => c.id === regionId);
+  if (!region) return [];
+  
+  const rng = seededRandom(seed + 88888 + regionId * 5551);
+  const x0 = region.xMin;
+  const y0 = region.yMin;
+  const x1 = region.xMax;
+  const y1 = region.yMax;
+  const step = Math.max(1, Math.floor((x1 - x0) / 16));  // ✅ Scan region bounds, not chunk
   const cityList = Object.keys(cities).map(k => { const [x,y] = k.split(",").map(Number); return {x,y}; });
 
   const caves = [];
   
-  // Helper function to find a valid cave position
+  // Helper function to find a valid cave position within REGION
   const findValidCavePosition = () => {
     const candidates = [];
     for (let y = Math.max(4, y0); y < y1; y += step) {
@@ -1353,16 +1357,15 @@ function generateChunkCaves(chunkX, chunkY, seed, cities, existingCaves) {
     const biome = pick.biome;
     const boss = BIOME_BOSSES[biome];
     
-    // ✅ NEW: Get item level for this chunk
-    const chunk = getChunkTier(chunkX * CHUNK_SIZE + CHUNK_SIZE/2, chunkY * CHUNK_SIZE + CHUNK_SIZE/2);
+    // ✅ Get item level for this REGION (use max level of region)
     let itemLevel = 1;
-    if (chunk && chunk.levelRange) {
-      itemLevel = chunk.levelRange[1]; // ✅ Use MAX level — all caves in region have max difficulty!
-    } else if (chunk && chunk.isDynamic) {
+    if (region && region.levelRange) {
+      itemLevel = region.levelRange[1]; // ✅ Use MAX level of region
+    } else if (region && region.isDynamic) {
       itemLevel = 25;  // Default for dynamic
     }
     
-    // ✅ NEW: Use scaled boss stats based on item level
+    // ✅ Use scaled boss stats based on item level
     const baseStats = getScaledBossStats(itemLevel);
     const scaledStats = applyBiomeMultiplier(baseStats, biome);
     
@@ -1370,54 +1373,64 @@ function generateChunkCaves(chunkX, chunkY, seed, cities, existingCaves) {
       key,
       cave: {
         x: pick.x, y: pick.y, biome: biome, 
-        difficulty: `Level ${itemLevel}`,  // ✅ NEW
-        itemLevel,  // ✅ NEW: Store item level
+        difficulty: `Level ${itemLevel}`,
+        itemLevel,
         bossName: boss.name, bossSprite: boss.sprite,
-        bossHp: scaledStats.hp,  // ✅ NOW SCALED
-        bossAtk: scaledStats.atk,  // ✅ NOW SCALED
-        bossXp: scaledStats.xp,  // ✅ NOW SCALED
-        bossGold: scaledStats.gold,  // ✅ NOW SCALED
-        bossDmg: scaledStats.dmg,  // ✅ NEW
-        bossDef: scaledStats.def,  // ✅ NEW
+        bossHp: scaledStats.hp,
+        bossAtk: scaledStats.atk,
+        bossXp: scaledStats.xp,
+        bossGold: scaledStats.gold,
+        bossDmg: scaledStats.dmg,
+        bossDef: scaledStats.def,
         lootSeed: Math.floor(rng() * 99999),
-        isBossCave: true,  // ✅ NEW: Mark as boss cave
-        questId: `boss_cave_${chunkX}_${chunkY}_${caveIndex}`,  // ✅ NEW: Quest link
+        isBossCave: true,
+        questId: `boss_cave_${regionId}_${caveIndex}`,  // ✅ Quest link uses regionId
       }
     };
   };
   
-  // ✅ NEW: Generate caves based on level range (10 caves per level tier)
-  // Level 1-5: 5 caves, Level 6-10: 5 caves, Level 11-15: 5 caves, etc.
-  const chunk = getChunkTier(chunkX * CHUNK_SIZE + CHUNK_SIZE/2, chunkY * CHUNK_SIZE + CHUNK_SIZE/2);
-  let cavesToGenerate = 2;  // Default
-  
-  if (chunk && chunk.levelRange) {
-    // Determine number of caves based on level tier
-    // Level 1-5: 5 caves, 6-10: 5 caves, 11-15: 5 caves, 16-20: 5 caves, etc.
-    const minLevel = chunk.levelRange[0];
-    if (minLevel >= 1 && minLevel <= 5) cavesToGenerate = 5;      // Beginner
-    else if (minLevel >= 6 && minLevel <= 10) cavesToGenerate = 5;   // Easy
-    else if (minLevel >= 11 && minLevel <= 15) cavesToGenerate = 5;  // Low Intermediate
-    else if (minLevel >= 16 && minLevel <= 20) cavesToGenerate = 5;  // Mid Intermediate
-    else if (minLevel >= 21 && minLevel <= 25) cavesToGenerate = 5;  // High Intermediate
-    else if (minLevel >= 26 && minLevel <= 30) cavesToGenerate = 5;  // Easy Hard
-    else if (minLevel >= 31 && minLevel <= 35) cavesToGenerate = 5;  // Mid Hard
-    else if (minLevel >= 36 && minLevel <= 40) cavesToGenerate = 5;  // Hard
-    else if (minLevel >= 41 && minLevel <= 45) cavesToGenerate = 5;  // Easy Expert
-    else if (minLevel >= 46 && minLevel <= 50) cavesToGenerate = 5;  // Expert
-  } else if (chunk && chunk.isDynamic) {
-    cavesToGenerate = 5;  // Dynamic chunks: 5 caves
-  }
+  // ✅ NEW: Generate exactly 10 caves per REGION (not per chunk!)
+  const cavesToGenerate = 10;  // ✅ 10 Höhlen pro Region!
   
   for (let i = 0; i < cavesToGenerate; i++) {
     const pick = findValidCavePosition();
     if (pick) {
-      caves.push(createCave(pick, i));  // ✅ Pass cave index
+      caves.push(createCave(pick, i));
     }
   }
   
+  return caves;  // ✅ Return array of caves for this region
+}
+
+// ============================================================
+// CHUNK CAVES (DEPRECATED - kept for compatibility)
+// ============================================================
+function generateChunkCaves(chunkX, chunkY, seed, cities, existingCaves) {
+  // ✅ NEW: This function now delegates to region-based generation
+  // Find which region this chunk belongs to and generate caves for that region only once
+  const chunkCenterX = chunkX * CHUNK_SIZE + CHUNK_SIZE/2;
+  const chunkCenterY = chunkY * CHUNK_SIZE + CHUNK_SIZE/2;
+  const chunkRegion = getChunkTier(chunkCenterX, chunkCenterY);
   
-  return caves;  // Return array of caves
+  if (!chunkRegion) return [];
+  
+  // ✅ Generate caves for the REGION (not the chunk)
+  // But only return caves that fall within THIS chunk's bounds (for compatibility)
+  const x0 = chunkX * CHUNK_SIZE;
+  const y0 = chunkY * CHUNK_SIZE;
+  const x1 = Math.min(x0 + CHUNK_SIZE, WORLD_SIZE - 4);
+  const y1 = Math.min(y0 + CHUNK_SIZE, WORLD_SIZE - 4);
+  
+  const allRegionCaves = generateRegionCaves(chunkRegion.id, seed, cities, existingCaves);
+  
+  // ✅ Filter: Only return caves within this chunk's bounds
+  const cavesInThisChunk = allRegionCaves.filter(caveObj => {
+    const cx = caveObj.cave.x;
+    const cy = caveObj.cave.y;
+    return cx >= x0 && cx < x1 && cy >= y0 && cy < y1;
+  });
+  
+  return cavesInThisChunk;
 }
 
 // ============================================================
@@ -1526,11 +1539,14 @@ function formatBiomeNames(biomes) {
   return ` Found in: ${formattedBiomes}.`;
 }
 
-function generateQuestgiverQuests(itemLevel, cities, originCityName, chunkX, chunkY, acceptedChunkBossQuests, isInSameChunk = false) {
+function generateQuestgiverQuests(itemLevel, cities, originCityName, chunkX, chunkY, acceptedChunkBossQuests, isInSameChunk = false, worldSeed = 0, regionName = "", completedQuestIds = new Set()) {
+  // ✅ SEEDED RNG für deterministische Quests
+  const rng = seededRandom(worldSeed + 99999 + (originCityName.length * 17) + (chunkX || 0) * 1337 + (chunkY || 0) * 7331);
+  
   const tier = getDifficultyTier(itemLevel);
   const pool = QUEST_ITEMS_POOL[tier] || QUEST_ITEMS_POOL.Beginner;
   const enemyPool = ENEMY_NAMES_BY_DIFFICULTY[tier] || ENEMY_NAMES_BY_DIFFICULTY.Beginner;
-  const count = randInt(1, 3);
+  const count = Math.floor(rng() * 3) + 1;  // ✅ 1-3 with seeded RNG
   const quests = [];
   const usedTargets = new Set();
 
@@ -1547,32 +1563,36 @@ function generateQuestgiverQuests(itemLevel, cities, originCityName, chunkX, chu
   const DELIVER_ITEMS = ["Sealed Letter", "Royal Package", "Merchant's Goods", "Sacred Relic", "Map Fragment", "Enchanted Scroll", "Rare Medicine", "Trade Agreement", "Forbidden Tome", "Golden Chalice"];
 
   // CHUNK BOSS HUNT QUEST
-  if (isInSameChunk && chunkX !== undefined && chunkY !== undefined && !acceptedChunkBossQuests?.[`chunk_${chunkX}_${chunkY}`]) {
+  const bossQuestId = `chunk_boss_${chunkX}_${chunkY}`;
+  const alreadyAccepted = !!acceptedChunkBossQuests?.[`chunk_${chunkX}_${chunkY}`];
+  const alreadyCompleted = completedQuestIds.has(bossQuestId);
+  if (isInSameChunk && chunkX !== undefined && chunkY !== undefined && !alreadyAccepted && !alreadyCompleted) {
+    const regionLabel = regionName ? ` in ${regionName}` : "";
     quests.push({
-      id: `chunk_boss_${chunkX}_${chunkY}`,
+      id: bossQuestId,
       type: "questgiver",
       questKind: "chunkBossHunt",
-      title: `Defeat the Dungeon Guardians`,
-      description: `Two powerful dungeon guardians protect this region. Defeat them both to claim their treasures and prove your worth.`,
+      title: `Defeat the Dungeon Guardians${regionLabel}!`,
+      description: `Slay any two powerful bosses that dwell in the caves of this region. Their treasures are yours to claim.`,
       targetChunkX: chunkX,
       targetChunkY: chunkY,
       targetBosses: 2,
       bossKillCount: 0,
       goldReward: Math.round((goldBase + (goldBase + 125)) / 2 * 0.8),
       xpReward:   Math.round((xpBase   + (xpBase   + 150)) / 2 * 1.3),
-      rewardLoot: "chest",
+      rewardLoot: "boss",
       accepted: false,
     });
   }
 
   for (let i = 0; i < count; i++) {
-    const roll = Math.random();
+    const roll = rng();  // ✅ Seeded
 
     if (roll < 0.33 && targetCities.length > 0) {
-      const targetCity = pick(targetCities);
-      const deliverItem = pick(DELIVER_ITEMS);
+      const targetCity = targetCities[Math.floor(rng() * targetCities.length)];  // ✅ Seeded pick
+      const deliverItem = DELIVER_ITEMS[Math.floor(rng() * DELIVER_ITEMS.length)];  // ✅ Seeded pick
       quests.push({
-        id: `qg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        id: `qg_city_${originCityName}_deliver_${i}`,  // ✅ Deterministisch!
         type: "questgiver", questKind: "deliver",
         title: `Deliver ${deliverItem} to ${targetCity.name}`,
         description: `Bring a ${deliverItem} to ${targetCity.name} (${targetCity.x}, ${targetCity.y}). The recipient awaits your arrival.`,
@@ -1584,14 +1604,14 @@ function generateQuestgiverQuests(itemLevel, cities, originCityName, chunkX, chu
         accepted: false,
       });
     } else if (roll < 0.66) {
-      const needed = randInt(3, 6);
+      const needed = Math.floor(rng() * 4) + 3;  // ✅ 3-6 seeded
       let target;
-      do { target = pick(enemyPool); } while (usedTargets.has(target));
+      do { target = enemyPool[Math.floor(rng() * enemyPool.length)]; } while (usedTargets.has(target));  // ✅ Seeded pick
       usedTargets.add(target);
       const biomes = findBiomesForEnemy(target);
       const biomeInfo = formatBiomeNames(biomes);
       quests.push({
-        id: `qg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        id: `qg_city_${originCityName}_kill_${i}`,  // ✅ Deterministisch!
         type: "questgiver", questKind: "kill",
         title: `Slay ${needed} ${target}s`,
         description: `The region is plagued by ${target}s. Defeat ${needed} of them to restore peace.${biomeInfo}`,
@@ -1601,12 +1621,12 @@ function generateQuestgiverQuests(itemLevel, cities, originCityName, chunkX, chu
         accepted: false,
       });
     } else {
-      const needed = randInt(3, 4);
+      const needed = Math.floor(rng() * 2) + 3;  // ✅ 3-4 seeded
       let item;
-      do { item = pick(pool); } while (usedTargets.has(item));
+      do { item = pool[Math.floor(rng() * pool.length)]; } while (usedTargets.has(item));  // ✅ Seeded pick
       usedTargets.add(item);
       quests.push({
-        id: `qg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        id: `qg_city_${originCityName}_gather_${i}`,  // ✅ Deterministisch!
         type: "questgiver", questKind: "gather",
         title: `Collect ${needed} ${item}s`,
         description: `A brave adventurer is needed to gather ${needed} ${item}s from the dangerous creatures nearby.`,
@@ -1620,11 +1640,14 @@ function generateQuestgiverQuests(itemLevel, cities, originCityName, chunkX, chu
   return quests;
 }
 
-function generateBulletinQuests(itemLevel) {
+function generateBulletinQuests(itemLevel, worldSeed = 0) {
+  // ✅ SEEDED RNG für deterministische Quests
+  const rng = seededRandom(worldSeed + 88888 + itemLevel * 121);
+  
   const tier = getDifficultyTier(itemLevel);
   const pool = QUEST_ITEMS_POOL[tier] || QUEST_ITEMS_POOL.Beginner;
   const enemyPool = ENEMY_NAMES_BY_DIFFICULTY[tier] || ENEMY_NAMES_BY_DIFFICULTY.Beginner;
-  const count = randInt(2, 3);
+  const count = Math.floor(rng() * 2) + 2;  // ✅ 2-3 seeded
   const quests = [];
 
   const goldBase = Math.round(15 * Math.pow(1.75, (itemLevel - 1) / 9));
@@ -1632,15 +1655,15 @@ function generateBulletinQuests(itemLevel) {
   const tierIdx = ["Beginner","Easy","Intermediate","Hard","Expert"].indexOf(tier);
 
   for (let i = 0; i < count; i++) {
-    const isKill = Math.random() < 0.5;
+    const isKill = rng() < 0.5;  // ✅ Seeded
 
     if (isKill) {
-      const needed = randInt(2, 4);
-      const target = pick(enemyPool);
+      const needed = Math.floor(rng() * 3) + 2;  // ✅ 2-4 seeded
+      const target = enemyPool[Math.floor(rng() * enemyPool.length)];  // ✅ Seeded pick
       const biomes = findBiomesForEnemy(target);
       const biomeInfo = formatBiomeNames(biomes);
       quests.push({
-        id: `bb_${Date.now()}_${Math.random().toString(36).slice(2, 6)}_${i}`,
+        id: `bb_tier_${tier}_kill_${i}`,  // ✅ Deterministisch!
         type: "bulletin", questKind: "kill",
         title: `Hunt ${needed} ${target}s`,
         description: `Bounty posted: eliminate ${needed} ${target}${needed > 1 ? "s" : ""} in the surrounding area.${biomeInfo}`,
@@ -1650,10 +1673,10 @@ function generateBulletinQuests(itemLevel) {
         accepted: false,
       });
     } else {
-      const needed = randInt(1, 2);
-      const item = pick(pool);
+      const needed = Math.floor(rng() * 2) + 1;  // ✅ 1-2 seeded
+      const item = pool[Math.floor(rng() * pool.length)];  // ✅ Seeded pick
       quests.push({
-        id: `bb_${Date.now()}_${Math.random().toString(36).slice(2, 6)}_${i}`,
+        id: `bb_tier_${tier}_gather_${i}`,  // ✅ Deterministisch!
         type: "bulletin", questKind: "gather",
         title: `Gather ${needed} ${item}`,
         description: `The town needs ${needed} ${item}${needed > 1 ? "s" : ""} collected from nearby creatures.`,
@@ -1710,7 +1733,7 @@ function calcStats(attrs, equipment) {
 // ============================================================
 
 const S = {
-  app: { background: "#0a0e27", color: "#e8d7c3", fontFamily: "'Crimson Text', 'Georgia', serif", minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "12px", fontSize: 21 },
+  app: { background: "#0a0e27", color: "#e8d7c3", fontFamily: "'Crimson Text', 'Georgia', serif", minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "12px 12px 80px 12px", fontSize: 21, paddingBottom: "80px" },
   gold: { color: "#d4af37" },
   panel: { background: "rgba(20,25,50,0.9)", border: "1px solid #d4af3744", borderRadius: 10, padding: 16, marginBottom: 10 },
   btn: { background: "linear-gradient(180deg, #2a1f0e, #1a140a)", border: "1px solid #d4af37", color: "#d4af37", padding: "10px 20px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontSize: 21, fontWeight: 600, transition: "all 0.15s" },
@@ -1850,20 +1873,56 @@ function HeroImage({ size = 110, heroUrl }) {
       setLoaded(true);
       if (!canvasRef.current) return;
       const ctx = canvasRef.current.getContext("2d");
+      
+      // Berechne Aspect Ratio des Original-Bildes
+      const aspectRatio = sheet.width / sheet.height;
+      let drawWidth = size;
+      let drawHeight = size;
+      let offsetX = 0;
+      let offsetY = 0;
+      
+      if (aspectRatio > 1) {
+        // Breiter als hoch
+        drawHeight = size / aspectRatio;
+        offsetY = (size - drawHeight) / 2;
+      } else {
+        // Höher als breit
+        drawWidth = size * aspectRatio;
+        offsetX = (size - drawWidth) / 2;
+      }
+      
       canvasRef.current.width = size;
       canvasRef.current.height = size;
       ctx.clearRect(0, 0, size, size);
-      ctx.drawImage(sheet, 0, 0, sheet.width, sheet.height, 0, 0, size, size);
+      ctx.drawImage(sheet, 0, 0, sheet.width, sheet.height, offsetX, offsetY, drawWidth, drawHeight);
     });
   }, [size, heroUrl]);
 
   useEffect(() => {
     if (!loaded || !_heroCanvas || !canvasRef.current) return;
     const ctx = canvasRef.current.getContext("2d");
+    
+    // Berechne Aspect Ratio des Original-Bildes
+    const aspectRatio = _heroCanvas.width / _heroCanvas.height;
+    let drawWidth = size;
+    let drawHeight = size;
+    let offsetX = 0;
+    let offsetY = 0;
+    
+    if (aspectRatio > 1) {
+      // Breiter als hoch
+      drawHeight = size / aspectRatio;
+      offsetY = (size - drawHeight) / 2;
+    } else {
+      // Höher als breit
+      drawWidth = size * aspectRatio;
+      offsetX = (size - drawWidth) / 2;
+    }
+    
     canvasRef.current.width = size;
     canvasRef.current.height = size;
     ctx.clearRect(0, 0, size, size);
-    ctx.drawImage(_heroCanvas, 0, 0, _heroCanvas.width, _heroCanvas.height, 0, 0, size, size);
+    ctx.drawImage(_heroCanvas, 0, 0, _heroCanvas.width, _heroCanvas.height, offsetX, offsetY, drawWidth, drawHeight);
   }, [loaded, size]);
 
   return <canvas ref={canvasRef} width={size} height={size} style={{ width: size, height: size }} />;
@@ -1995,7 +2054,7 @@ function InventoryRow({ item, count, idx, onUse, onEquip, onSell, onDiscard, sel
           <span style={{ fontSize: 17, fontWeight: 600, color: item.rarityColor || undefined }}>{item.name}</span>
           {count > 1 && <span style={{ fontSize: 15, fontWeight: 700, ...S.gold, marginLeft: 6 }}>×{count}</span>}
           <span style={{ fontSize: 15, opacity: 0.5, marginLeft: 6 }}>
-            {item.type === "consumable" ? (item.effect === "repel" ? `Consumable • ${item.value} steps no encounters` : `Consumable • +${item.value} HP`) : item.type === "armor" ? (
+            {item.type === "consumable" ? (item.effect === "repel" ? `Consumable • ${item.value} steps no encounters` : `Consumable • ${item.healPercent ? `+${Math.round(item.healPercent * 100)}% HP` : `+${item.value} HP`}`) : item.type === "armor" ? (
               `${item.rarity || "Normal"} • ${item.slot.charAt(0).toUpperCase() + item.slot.slice(1)}`
             ) : item.type === "deliveryitem" ? "📬 Delivery" : "Quest Item"}
           </span>
@@ -2139,10 +2198,153 @@ function CharacterCreation({ onStart }) {
 }
 
 // ============================================================
+// SKILL BUTTON COMPONENTS (must be outside Game to avoid hook-in-map error)
+// ============================================================
+
+function SpellButton({ spell, mana, maxMana, damage, onCast, disabled }) {
+  const [tooltip, setTooltip] = React.useState(null);
+  const [tooltipPos, setTooltipPos] = React.useState({ x: 0, y: 0 });
+  const canCast = mana >= spell.manaCost;
+  return (
+    <div style={{ position: "relative" }}>
+      <button
+        onClick={() => onCast(spell.id)}
+        onMouseEnter={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          setTooltip(true);
+          setTooltipPos({ x: rect.right + 8, y: rect.top });
+        }}
+        onMouseLeave={() => setTooltip(null)}
+        style={{
+          width: "100%", aspectRatio: "1", padding: 0,
+          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2,
+          fontSize: 24,
+          background: canCast ? "#0066ff22" : "#66666633",
+          border: canCast ? "1px solid #4169E1" : "1px solid #666",
+          borderRadius: 6,
+          color: canCast ? "#4169E1" : "#666",
+          cursor: canCast ? "pointer" : "not-allowed",
+          opacity: canCast ? 1 : 0.5,
+          transition: "all 0.2s",
+        }}
+        disabled={!canCast || disabled}
+      >
+        {spell.name.split(" ")[0]}
+        <div style={{ fontSize: 10, fontWeight: 600, textAlign: "center", maxWidth: "100%" }}>
+          {spell.name.split(" ").slice(1).join(" ")}
+        </div>
+      </button>
+      {tooltip && (
+        <div style={{
+          position: "fixed", left: tooltipPos.x, top: tooltipPos.y,
+          background: "#1a1a2e", border: "1px solid #4169E1", borderRadius: 8,
+          padding: 10, fontSize: 12, minWidth: 200, color: "#fff", zIndex: 10000, pointerEvents: "none",
+        }}>
+          <div style={{ fontWeight: 700, color: "#4169E1", marginBottom: 6 }}>{spell.name}</div>
+          <div style={{ opacity: 0.8, marginBottom: 4 }}>💚 Mana Cost: <span style={{ color: "#4169E1", fontWeight: 600 }}>{spell.manaCost}</span></div>
+          <div style={{ opacity: 0.8, marginBottom: 4 }}>⚔️ Damage: <span style={{ color: "#ff8800", fontWeight: 600 }}>{spell.dmgRange[0]}-{spell.dmgRange[1]}</span></div>
+          {spell.effect && (
+            <div style={{ opacity: 0.8, marginBottom: 4 }}>
+              ✨ Effect: <span style={{ color: "#4ade80", fontWeight: 600 }}>
+                {spell.effect === "slow" ? `Slow: -50% enemy dmg (${spell.slowDuration} rounds)` :
+                 spell.effect === "heal" ? `Lifesteal: ${Math.round(spell.healPercent * 100)}% of damage dealt` :
+                 spell.effect === "dodge" ? "Stealth: enemy misses next 2 attacks" :
+                 spell.effect === "burn" ? `Burn: enemy loses HP each round (${spell.burnDuration} rounds)` :
+                 spell.effect === "playerHeal" ? "Heals you for the rolled amount" :
+                 spell.effect}
+              </span>
+            </div>
+          )}
+          {spell.hitCount && (
+            <div style={{ opacity: 0.8, marginBottom: 4 }}>
+              🎯 Hits: <span style={{ color: "#ff8800", fontWeight: 600 }}>{spell.hitCount}</span>
+            </div>
+          )}
+          <div style={{ opacity: 0.6, fontSize: 11, marginTop: 6, paddingTop: 6, borderTop: "1px solid #4169E122" }}>
+            Current Mana: {mana}/{maxMana}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SpecialButton({ special, hp, maxHp, onUse, disabled }) {
+  const [tooltip, setTooltip] = React.useState(null);
+  const [tooltipPos, setTooltipPos] = React.useState({ x: 0, y: 0 });
+  const hpCost = Math.ceil(hp * special.hpCostPercent);
+  const canUse = hp - hpCost > 1;
+  return (
+    <div style={{ position: "relative" }}>
+      <button
+        onClick={() => onUse(special.id)}
+        onMouseEnter={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          setTooltip(true);
+          setTooltipPos({ x: rect.right + 8, y: rect.top });
+        }}
+        onMouseLeave={() => setTooltip(null)}
+        style={{
+          width: "100%", aspectRatio: "1", padding: 0,
+          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2,
+          fontSize: 24,
+          background: canUse ? "#ff660022" : "#66666633",
+          border: canUse ? "1px solid #ff8800" : "1px solid #666",
+          borderRadius: 6,
+          color: canUse ? "#ff8800" : "#666",
+          cursor: canUse ? "pointer" : "not-allowed",
+          opacity: canUse ? 1 : 0.5,
+          transition: "all 0.2s",
+        }}
+        disabled={!canUse || disabled}
+      >
+        {special.name.split(" ")[0]}
+        <div style={{ fontSize: 10, fontWeight: 600, textAlign: "center", maxWidth: "100%" }}>
+          {special.name.split(" ").slice(1).join(" ")}
+        </div>
+      </button>
+      {tooltip && (
+        <div style={{
+          position: "fixed", left: tooltipPos.x, top: tooltipPos.y,
+          background: "#1a1a2e", border: "1px solid #ff8800", borderRadius: 8,
+          padding: 10, fontSize: 12, minWidth: 200, color: "#fff", zIndex: 10000, pointerEvents: "none",
+        }}>
+          <div style={{ fontWeight: 700, color: "#ff8800", marginBottom: 6 }}>{special.name}</div>
+          <div style={{ opacity: 0.8, marginBottom: 4 }}>❤️ HP Cost: <span style={{ color: "#ff8800", fontWeight: 600 }}>{Math.round(special.hpCostPercent * 100)}% ({hpCost})</span></div>
+          <div style={{ opacity: 0.8, marginBottom: 4 }}>⚔️ Damage: <span style={{ color: "#ff8800", fontWeight: 600 }}>{special.dmgRange[0]}-{special.dmgRange[1]}</span></div>
+          {special.effect && (
+            <div style={{ opacity: 0.8, marginBottom: 4 }}>
+              ✨ Effect: <span style={{ color: "#ff8800", fontWeight: 600 }}>
+                {special.effect === "bleed" ? `Bleed: enemy loses HP each round (${special.bleedDuration} rounds)` :
+                 special.effect === "crit" ? "Crit Boost: next 2 attacks guaranteed crit" :
+                 special.effect === "defense" ? "Defense Boost: +50% defense for 2 rounds" :
+                 special.effect === "poison" ? `Poison: enemy loses HP each round (${special.poisonDuration} rounds)` :
+                 special.effect === "heal" ? `Lifesteal: ${Math.round(special.healPercent * 100)}% of damage dealt` :
+                 special.effect === "reflect" ? "Deal damage (no extra effect)" :
+                 special.effect === "stun" ? `Stun: enemy can't attack for ${special.stunDuration} rounds` :
+                 special.effect}
+              </span>
+            </div>
+          )}
+          {special.hitCount && (
+            <div style={{ opacity: 0.8, marginBottom: 4 }}>
+              🎯 Hits: <span style={{ color: "#ff8800", fontWeight: 600 }}>{special.hitCount}</span>
+            </div>
+          )}
+          <div style={{ opacity: 0.6, fontSize: 11, marginTop: 6, paddingTop: 6, borderTop: "1px solid #ff880022" }}>
+            Current HP: {hp}/{maxHp}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
 // MAIN GAME
 // ============================================================
 
-function Game({ playerData }) {
+function Game({ playerData, onMainMenu }) {
   const isLoaded = !playerData.isNew && playerData.worldSeed != null;
   const playerName = playerData.name || playerData.playerName;
   const initialAttrs = playerData.attrs || playerData.attributes;
@@ -2228,9 +2430,7 @@ const heroUrl = "hero_sprite.png";
   const [equipment, setEquipment] = useState(isLoaded ? playerData.equipment : { weapon: null, chest: null, shield: null, head: null });
   const [inventory, setInventory] = useState(isLoaded ? playerData.inventory : []);
   const [learnedAbilities, setLearnedAbilities] = useState(isLoaded ? playerData.learnedAbilities || { spells: [], specials: [] } : { spells: [], specials: [] });
-  const [abilityChoicePopup, setAbilityChoicePopup] = useState(null);
-  const [spellsOpen, setSpellsOpen] = useState(false);
-  const [specialsOpen, setSpecialsOpen] = useState(false);
+  const [abilityChoicePopup, setAbilityChoicePopup] = useState(isLoaded ? (playerData.pendingAbilityChoice || null) : null);
   const [skillsOpen, setSkillsOpen] = useState(false);
   const [potionUseModal, setPotionUseModal] = useState(false);
   const [playerStatus, setPlayerStatus] = useState({
@@ -2260,8 +2460,10 @@ const heroUrl = "hero_sprite.png";
   const [currentCity, setCurrentCity] = useState(null);
   const [lastCity, setLastCity] = useState(isLoaded ? playerData.lastCity : null);
   const [visitedCities, setVisitedCities] = useState(isLoaded ? new Set(playerData.visitedCities || []) : new Set());
+  const [firstSpawnDone, setFirstSpawnDone] = useState(isLoaded);  // ✅ NEW: Track if first spawn already happened
   const [enemy, setEnemy] = useState(null);
   const [enemyHp, setEnemyHp] = useState(0);
+  const [combatStartPos, setCombatStartPos] = useState(null);
   const [combatLog, setCombatLog] = useState([]);
   const [cityQuestsCache, setCityQuestsCache] = useState(isLoaded ? playerData.cityQuestsCache || {} : {});
   const [cityBulletinCache, setCityBulletinCache] = useState(isLoaded ? playerData.cityBulletinCache || {} : {});
@@ -2278,6 +2480,10 @@ const heroUrl = "hero_sprite.png";
   const [charWindowOpen, setCharWindowOpen] = useState(false);
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [saveMsg, setSaveMsg] = useState(null);
+  const [combatItemsOpen, setCombatItemsOpen] = useState(false);
+  const [levelUpMsg, setLevelUpMsg] = useState(null);
+  const [deathPopup, setDeathPopup] = useState(null);
+  const [floatingDamages, setFloatingDamages] = useState([]);
   const restRef = useRef(null);
   const combatLogRef = useRef(null);
 
@@ -2295,13 +2501,14 @@ const heroUrl = "hero_sprite.png";
       attributes: attrs, statPoints, equipment, inventory,
       quests, completedQuestIds, acceptedChunkBossQuests, log: log.slice(-30),
       lastCity, cityQuestsCache, cityBulletinCache, boughtUniqueIds: [...boughtUniqueIds], defeatedBosses: [...defeatedBosses],
-      visitedCities: [...visitedCities],  // ✅ Save visited cities
+      visitedCities: [...visitedCities],
       maxHp: calcStats(attrs, equipment).maxHp,
       learnedAbilities,
+      pendingAbilityChoice: abilityChoicePopup || null,
     }, currentSlot);  // ✅ Save to current slot
     setSaveMsg(ok ? "Game saved!" : "Save failed!");
     setTimeout(() => setSaveMsg(null), 1500);
-  }, [playerName, worldSeed, pos, hp, mana, xp, level, gold, attrs, statPoints, equipment, inventory, quests, completedQuestIds, acceptedChunkBossQuests, log, lastCity, cityQuestsCache, cityBulletinCache, boughtUniqueIds, learnedAbilities, currentSlot]);
+  }, [playerName, worldSeed, pos, hp, mana, xp, level, gold, attrs, statPoints, equipment, inventory, quests, completedQuestIds, acceptedChunkBossQuests, log, lastCity, cityQuestsCache, cityBulletinCache, boughtUniqueIds, learnedAbilities, abilityChoicePopup, currentSlot]);
 
   // Auto-save when entering world or city screen
   useEffect(() => {
@@ -2312,17 +2519,18 @@ const heroUrl = "hero_sprite.png";
           attributes: attrs, statPoints, equipment, inventory,
           quests, completedQuestIds, acceptedChunkBossQuests, log: log.slice(-30),
           lastCity, cityQuestsCache, cityBulletinCache, boughtUniqueIds: [...boughtUniqueIds], defeatedBosses: [...defeatedBosses],
-          visitedCities: [...visitedCities],  // ✅ Save visited cities
+          visitedCities: [...visitedCities],
           maxHp: calcStats(attrs, equipment).maxHp,
           learnedAbilities,
+          pendingAbilityChoice: abilityChoicePopup || null,
         }, currentSlot);  // ✅ Save to current slot
       } catch (e) {}
     }
   }, [screen, currentSlot]);
 
-  // ✅ NEW: Auto-spawn new character directly on a city in Starter Plains
+  // ✅ NEW: Auto-spawn new character directly on a city in Starter Plains (ONCE ONLY!)
   useEffect(() => {
-    if (isLoaded || screen !== "world" || Object.keys(cities).length === 0) return;  // Only for new characters
+    if (isLoaded || firstSpawnDone || screen !== "world" || Object.keys(cities).length === 0) return;  // Only for new characters, ONCE
     
     // Starter Plains chunk: xMin: 170, xMax: 300, yMin: 280, yMax: 410
     const starterPlainsCities = Object.entries(cities).filter(([key, city]) => {
@@ -2342,8 +2550,9 @@ const heroUrl = "hero_sprite.png";
       setLastCity(firstCity);
       setVisitedCities(prev => new Set([...prev, firstCity.name]));
       addLog(`🏘️ Welcome to ${firstCity.name}!`);
+      setFirstSpawnDone(true);  // ✅ Mark as done so it never runs again!
     }
-  }, [cities, isLoaded, screen]);
+  }, [cities, isLoaded, firstSpawnDone, screen]);
 
   const stats = useMemo(() => calcStats(attrs, equipment), [attrs, equipment]);
   const xpToLevel = Math.floor(80 * Math.pow(level, 1.8));
@@ -2420,10 +2629,6 @@ const heroUrl = "hero_sprite.png";
       setFloatingDamages(prev => prev.filter(d => d.id !== id));
     }, 1000);
   }, []);
-
-  const [levelUpMsg, setLevelUpMsg] = useState(null);
-  const [deathPopup, setDeathPopup] = useState(null);
-  const [floatingDamages, setFloatingDamages] = useState([]);  // ✅ NEW: Floating Damage Text
 
   // Level up
   useEffect(() => {
@@ -2639,6 +2844,7 @@ const heroUrl = "hero_sprite.png";
       setPlayerBuffs({ active: [] });
       setEnemyBuffs({ active: [] });
       
+      setCombatStartPos({ x: pos.x, y: pos.y });  // ✅ NEW: Speichere Start Position
       setEnemy(en);
       setEnemyHp(en.hp);
       setCombatLog([`A wild ${en.name} appears!`]);
@@ -2686,7 +2892,9 @@ const heroUrl = "hero_sprite.png";
       }
       
       if (q.questKind === "chunkBossHunt" && enemy.isBoss && enemy.caveKey) {
-        const bossBelongsToChunk = enemy.caveKey.includes(`${q.targetChunkX},`) && enemy.caveKey.includes(`,${q.targetChunkY}`);
+        // ✅ Changed: Accept ANY boss from this region, not specific bosses!
+        // Boss cave key format: "chunkX,chunkY" - just check if it matches the target chunk
+        const bossBelongsToChunk = enemy.caveKey.startsWith(`${q.targetChunkX},${q.targetChunkY}`);
         if (bossBelongsToChunk && (q.bossKillCount || 0) < q.targetBosses) {
           return { ...q, bossKillCount: (q.bossKillCount || 0) + 1 };
         }
@@ -2695,14 +2903,23 @@ const heroUrl = "hero_sprite.png";
       return q;
     }));
 
-    const lootStr = lootItems.length > 0 ? `, and ${lootItems.map(i => i.name).join(", ")}` : "";
-    const bossLootStr = bossLootItem ? `\n🎁 Boss drop: ${bossLootItem.name} (${bossLootItem.rarity})!` : "";
+    const lootStr = lootItems.length > 0 ? `, and ${lootItems.map(i => {
+      if (i.type === "questitem") return `**${i.name}** (Quest Item)`;  // ✅ Quest Item type
+      if (i.type === "consumable") return `**${i.name}** (Potion)`;     // ✅ Potion type
+      return `**${i.name}** (${i.rarity || "Item"})`;                   // ✅ Equipment: show rarity
+    }).join(", ")}` : "";
+    const bossLootStr = bossLootItem ? `\n🎁 Boss drop: **${bossLootItem.name}** (${bossLootItem.rarity})!` : "";  // ✅ Bold markup!
     setCombatLog(prev => [...prev, `🏆 Victory! Gained ${earnedXp} XP, ${earnedGold} gold${lootStr}!${bossLootStr}`]);
     
     if (bossLootItem) {
-      addLog(`👑 Boss slain! Obtained ${bossLootItem.name} (${bossLootItem.rarity})!`);
+      addLog(`👑 Boss slain! Obtained **${bossLootItem.name}** (${bossLootItem.rarity})!`);  // ✅ Bold markup!
     } else {
-      addLog(`🏆 Defeated ${enemy.name}! +${earnedXp} XP, +${earnedGold} gold`);
+      const normalLootLog = lootItems.length > 0 ? ` and ${lootItems.map(i => {
+        if (i.type === "questitem") return `**${i.name}** (Quest Item)`;  // ✅ Quest Item type
+        if (i.type === "consumable") return `**${i.name}** (Potion)`;     // ✅ Potion type
+        return `**${i.name}** (${i.rarity || "Item"})`;                   // ✅ Equipment: show rarity
+      }).join(", ")}` : "";
+      addLog(`🏆 Defeated ${enemy.name}! +${earnedXp} XP, +${earnedGold} gold${normalLootLog}`);
     }
 
     // ✅ FIX 2: Cleanup ist jetzt SYNCHRON überall implementiert
@@ -2710,8 +2927,15 @@ const heroUrl = "hero_sprite.png";
     // (Das ist jetzt in allen Enemy-Death Szenarien gemacht)
     
     setEnemyHp(0);
-    setTimeout(() => { setScreen("world"); setEnemy(null); }, 1500);
-  }, [enemy, difficulty, rollLoot, addLog]);
+    setTimeout(() => { 
+      if (combatStartPos) {
+        setPos(combatStartPos);  // ✅ Zurück zur Position wo Kampf war
+      }
+      setScreen("world");
+      setEnemy(null);
+      setCombatStartPos(null);  // ✅ Cleanup
+    }, 1500);
+  }, [enemy, difficulty, rollLoot, addLog, combatStartPos]);
 
   const handlePlayerStatusCheck = useCallback(() => {
     if (playerStatus.type && playerStatus.duration > 0) {
@@ -3561,13 +3785,22 @@ const heroUrl = "hero_sprite.png";
 
       // Update kill quest progress (moved to first endCombat section)
 
-      const lootStr = lootItems.length > 0 ? `, and ${lootItems.map(i => i.name).join(", ")}` : "";
-      const bossLootStr = bossLootItem ? `\n🎁 Boss drop: ${bossLootItem.name} (${bossLootItem.rarity})!` : "";
+      const lootStr = lootItems.length > 0 ? `, and ${lootItems.map(i => {
+        if (i.type === "questitem") return `**${i.name}** (Quest Item)`;  // ✅ Quest Item type
+        if (i.type === "consumable") return `**${i.name}** (Potion)`;     // ✅ Potion type
+        return `**${i.name}** (${i.rarity || "Item"})`;                   // ✅ Equipment: show rarity
+      }).join(", ")}` : "";
+      const bossLootStr = bossLootItem ? `\n🎁 Boss drop: **${bossLootItem.name}** (${bossLootItem.rarity})!` : "";  // ✅ Bold markup!
       newCombatLog.push(`🏆 Victory! Gained ${earnedXp} XP, ${earnedGold} gold${lootStr}!${bossLootStr}`);
       if (bossLootItem) {
-        addLog(`👑 Boss slain! Obtained ${bossLootItem.name} (${bossLootItem.rarity})!`);
+        addLog(`👑 Boss slain! Obtained **${bossLootItem.name}** (${bossLootItem.rarity})!`);  // ✅ Bold markup!
       } else {
-        addLog(`🏆 Defeated ${enemy.name}! +${earnedXp} XP, +${earnedGold} gold`);
+        const normalLootLog = lootItems.length > 0 ? ` and ${lootItems.map(i => {
+          if (i.type === "questitem") return `**${i.name}** (Quest Item)`;  // ✅ Quest Item type
+          if (i.type === "consumable") return `**${i.name}** (Potion)`;     // ✅ Potion type
+          return `**${i.name}** (${i.rarity || "Item"})`;                   // ✅ Equipment: show rarity
+        }).join(", ")}` : "";
+        addLog(`🏆 Defeated ${enemy.name}! +${earnedXp} XP, +${earnedGold} gold${normalLootLog}`);
       }
 
       setCombatLog(newCombatLog);
@@ -3695,8 +3928,11 @@ const heroUrl = "hero_sprite.png";
       // Spieler hat Status - kann agieren aber Status wird angewendet
     }
     
-    if (Math.random() < 0.5) {
-      addLog("🏃 You fled from battle!");
+    // ✅ NEW: 100% Flucht-Erfolg bei vollen HP, sonst 50%
+    const fleeChance = hp === stats.maxHp ? 1.0 : 0.5;
+    
+    if (Math.random() < fleeChance) {
+      addLog(hp === stats.maxHp ? "🏃 You fled from battle with ease! (Full HP)" : "🏃 You fled from battle!");
       
       // ✅ CRITICAL FIX: Clear all status/buffs when fleeing
       setPlayerStatus({ type: null, duration: 0, damagePerTurn: 0 });
@@ -3720,10 +3956,8 @@ const heroUrl = "hero_sprite.png";
         setCombatLog(prev => [...prev, `Failed to flee! ${enemy.name} hits you for ${enemyDmg}!`]);
       }
     }
-  }, [enemy, stats, addLog, enemyStatus, playerStatus, handlePlayerStatusCheck, handlePlayerBuffDecrement]);
+  }, [enemy, stats, addLog, enemyStatus, playerStatus, handlePlayerStatusCheck, handlePlayerBuffDecrement, hp]);
 
-
-  const [combatItemsOpen, setCombatItemsOpen] = useState(false);
 
   const useItemInCombat = useCallback((item, idx) => {
     if (!enemy || enemyHp <= 0) return;
@@ -3738,7 +3972,11 @@ const heroUrl = "hero_sprite.png";
     }
 
     // Use the item (heal)
-    const healAmount = item.value || 0;
+    // ✅ NEW: Nutze healPercent wenn definiert, sonst value
+    const healAmount = item.healPercent 
+      ? Math.ceil(stats.maxHp * item.healPercent)
+      : (item.value || 0);
+    
     setHp(prev => Math.min(prev + healAmount, stats.maxHp));
     setInventory(prev => prev.filter((_, i) => i !== idx));
     setCombatLog(prev => [...prev, `🧪 Used ${item.name}, healed ${healAmount} HP!`]);
@@ -3815,12 +4053,21 @@ const heroUrl = "hero_sprite.png";
   }, [enemy, enemyHp, stats, gold, inventory, addLog, lastCity, startX, startY, playerStatus, enemyStatus, handlePlayerStatusCheck, handlePlayerBuffDecrement]);
 
   const getCityQuests = useCallback((cityName, _unusedDiff) => {
-    if (!cityQuestsCache[cityName]) {
-      const cityKey = Object.keys(cities).find(k => cities[k].name === cityName);
-      const city = cityKey ? cities[cityKey] : null;
-      const chunkX = city ? Math.floor(city.x / CHUNK_SIZE) : undefined;
-      const chunkY = city ? Math.floor(city.y / CHUNK_SIZE) : undefined;
+    const cityKey = Object.keys(cities).find(k => cities[k].name === cityName);
+    const city = cityKey ? cities[cityKey] : null;
+    const chunkX = city ? Math.floor(city.x / CHUNK_SIZE) : undefined;
+    const chunkY = city ? Math.floor(city.y / CHUNK_SIZE) : undefined;
+    const bossQuestId = `chunk_boss_${chunkX}_${chunkY}`;
+    const bossAccepted = !!acceptedChunkBossQuests?.[`chunk_${chunkX}_${chunkY}`];
+    const bossCompleted = completedQuestIds.has(bossQuestId);
 
+    // Invalidate cache for this city if boss quest status changed
+    const cached = cityQuestsCache[cityName];
+    const cachedHasBoss = cached?.some(q => q.questKind === "chunkBossHunt");
+    const shouldHaveBoss = !bossAccepted && !bossCompleted;
+    const cacheStale = cachedHasBoss !== shouldHaveBoss;
+
+    if (!cached || cacheStale) {
       // Derive itemLevel from city (stored when chunk was generated, fallback via getDifficulty)
       let cityItemLevel = city?.itemLevel;
       if (!cityItemLevel && city) {
@@ -3832,13 +4079,16 @@ const heroUrl = "hero_sprite.png";
       const playerChunkY = Math.floor(pos.y / CHUNK_SIZE);
       const isInSameChunk = (chunkX === playerChunkX && chunkY === playerChunkY);
 
-      setCityQuestsCache(prev => ({
-        ...prev,
-        [cityName]: generateQuestgiverQuests(cityItemLevel, cities, cityName, chunkX, chunkY, acceptedChunkBossQuests, isInSameChunk),
-      }));
+      // Get region name from chunk tier
+      const chunk = city ? getChunkTier(city.x, city.y) : null;
+      const regionName = chunk?.name || "";
+
+      const generated = generateQuestgiverQuests(cityItemLevel, cities, cityName, chunkX, chunkY, acceptedChunkBossQuests, isInSameChunk, worldSeed, regionName, completedQuestIds);
+      setCityQuestsCache(prev => ({ ...prev, [cityName]: generated }));
+      return generated;
     }
-    return cityQuestsCache[cityName] || [];
-  }, [cityQuestsCache, cities, acceptedChunkBossQuests, pos, level]);
+    return cached;
+  }, [cityQuestsCache, cities, acceptedChunkBossQuests, completedQuestIds, pos, level, worldSeed]);
 
   const getCityBulletin = useCallback((cityName, _unusedDiff) => {
     if (!cityBulletinCache[cityName]) {
@@ -3848,7 +4098,7 @@ const heroUrl = "hero_sprite.png";
       if (!cityItemLevel && city) {
         cityItemLevel = getDifficulty(city.x, city.y, level).itemLevel;
       }
-      setCityBulletinCache(prev => ({ ...prev, [cityName]: generateBulletinQuests(cityItemLevel || 1) }));
+      setCityBulletinCache(prev => ({ ...prev, [cityName]: generateBulletinQuests(cityItemLevel || 1, worldSeed) }));
     }
     return cityBulletinCache[cityName] || [];
   }, [cityBulletinCache, cities, level]);
@@ -3867,14 +4117,20 @@ const heroUrl = "hero_sprite.png";
         useItemInCombat(item, idx);
         return;
       }
-      setHp(prev => Math.min(prev + item.value, stats.maxHp));
+      
+      // ✅ NEW: Nutze healPercent wenn definiert, sonst value
+      const healAmount = item.healPercent 
+        ? Math.ceil(stats.maxHp * item.healPercent)
+        : item.value;
+      
+      setHp(prev => Math.min(prev + healAmount, stats.maxHp));
       setInventory(prev => prev.filter((_, i) => i !== idx));
-      addLog(`Used ${item.name}, healed ${item.value} HP`);
+      addLog(`Used ${item.name}, healed ${healAmount} HP`);
       
       // ✅ VISUAL: Floating Heal Text IM GRÜNEN KREIS (Player, oben links)
       const playerX = 150;  // Grünen Kreis Mitte X
       const playerY = 130;  // Grünen Kreis Mitte Y
-      addFloatingDamage(`+${item.value}`, playerX, playerY, false, true);
+      addFloatingDamage(`+${healAmount}`, playerX, playerY, false, true);
     } else if (item.type === "consumable" && item.effect === "repel") {
       if (screen === "combat") { addLog("Cannot use Stealth Potion in combat!"); return; }
       setRepelSteps(item.value);
@@ -3922,15 +4178,20 @@ const heroUrl = "hero_sprite.png";
   const acceptQuest = useCallback((quest, cityName, cityX, cityY) => {
     if (quest.accepted) return;
     setQuests(prev => [...prev, { ...quest, accepted: true, originCity: cityName, originX: cityX, originY: cityY }]);
-    if (quest.type === "questgiver") {
+    
+    // ✅ ONLY mark as completed at TURN-IN time, not at ACCEPT!
+    // (Except for bulletin/delivery quests which are instantaneous)
+    if (quest.type === "questgiver" && quest.questKind !== "chunkBossHunt") {
       setCompletedQuestIds(prev => new Set([...prev, quest.id]));
-      // Mark chunk boss quest as accepted
-      if (quest.questKind === "chunkBossHunt") {
-        setAcceptedChunkBossQuests(prev => ({ ...prev, [`chunk_${quest.targetChunkX}_${quest.targetChunkY}`]: true }));
-        addLog(`⚔️ Accepted quest: ${quest.title}`);
-        return;
-      }
     }
+    
+    // Mark chunk boss quest as accepted
+    if (quest.questKind === "chunkBossHunt") {
+      setAcceptedChunkBossQuests(prev => ({ ...prev, [`chunk_${quest.targetChunkX}_${quest.targetChunkY}`]: true }));
+      addLog(`⚔️ Accepted quest: ${quest.title}`);
+      return;
+    }
+    
     // Add delivery item to inventory for deliver quests
     if (quest.questKind === "deliver") {
       setInventory(prev => [...prev, {
@@ -3946,10 +4207,34 @@ const heroUrl = "hero_sprite.png";
   }, [addLog]);
 
   const turnInQuest = useCallback((questId) => {
-    const quest = quests.find(q => q.id === questId);
+    // ✅ Finde Quest entweder direkt oder by ähnliche Eigenschaften (für old IDs)
+    let quest = quests.find(q => q.id === questId);
+    
+    // Falls nicht gefunden und questId ist alte Format (Date.now()), versuche fuzzy match
+    if (!quest && questId.includes('qg_') && questId.includes('_')) {
+      // Alt Format: qg_${Date.now()}_${random}
+      // Kann nicht gemappt werden → Quest ist verloren
+      addLog("❌ Quest no longer available (old session). Please accept new quests.");
+      return;
+    }
+    
     if (!quest || !isQuestComplete(quest)) return;
+    
     setGold(prev => prev + quest.goldReward);
     setXp(prev => prev + quest.xpReward);
+    
+    // ✅ NEW: Boss Hunt Quest - 70% chance für Boss Loot!
+    if (quest.questKind === "chunkBossHunt" && Math.random() < 0.7) {
+      const chunk = getChunkTier(quest.targetChunkX * 32, quest.targetChunkY * 32);  // ✅ Convert to world coords
+      const chunkBiome = getBiome(quest.targetChunkX * 32, quest.targetChunkY * 32, worldSeed);
+      if (chunk && chunk.levelRange) {
+        // ✅ Roll boss loot like a real boss would drop!
+        const bossLoot = generateBossLoot(chunk.levelRange, chunkBiome, questId.charCodeAt(0) * worldSeed + quest.targetChunkX * quest.targetChunkY);
+        setInventory(prev => [...prev, bossLoot]);
+        addLog(`🎁 Quest Reward: ${bossLoot.name} (${bossLoot.rarity})!`);
+      }
+    }
+    
     // Remove quest items from inventory (only for gather quests)
     if (quest.questKind === "gather") {
       let toRemove = quest.targetCount;
@@ -3966,9 +4251,24 @@ const heroUrl = "hero_sprite.png";
     if (quest.questKind === "deliver") {
       setInventory(prev => prev.filter(i => !(i.type === "deliveryitem" && i.name === quest.deliverItem)));
     }
+    
     setQuests(prev => prev.filter(q => q.id !== questId));
+    // ✅ NOW mark as completed (after quest is fully processed)
+    setCompletedQuestIds(prev => new Set([...prev, questId]));
+    
+    // ✅ Remove from accepted chunk boss quests
+    if (quest.questKind === "chunkBossHunt") {
+      setAcceptedChunkBossQuests(prev => {
+        const updated = { ...prev };
+        delete updated[`chunk_${quest.targetChunkX}_${quest.targetChunkY}`];
+        return updated;
+      });
+      addLog(`✅ Quest complete: ${quest.title}! +${quest.goldReward}g, +${quest.xpReward} XP`);
+      return;
+    }
+    
     addLog(`✅ Quest complete: ${quest.title}! +${quest.goldReward}g, +${quest.xpReward} XP`);
-  }, [quests, isQuestComplete, addLog]);
+  }, [quests, isQuestComplete, worldSeed, addLog]);
 
   // Render map tiles
   const renderMap = () => {
@@ -4216,17 +4516,17 @@ const heroUrl = "hero_sprite.png";
         const renderSkill = (s, type) => {
           const duration = s.slowDuration || s.bleedDuration || s.burnDuration || s.poisonDuration || s.stunDuration || null;
           const effectLabel =
-            s.effect === "slow"       ? "Slow" :
-            s.effect === "bleed"      ? "Bleed" :
-            s.effect === "burn"       ? "Burn" :
-            s.effect === "poison"     ? "Poison" :
+            s.effect === "slow"       ? "-50% enemy dmg" :
+            s.effect === "bleed"      ? "Bleed/round" :
+            s.effect === "burn"       ? "Burn/round" :
+            s.effect === "poison"     ? "Poison/round" :
             s.effect === "stun"       ? "Stun" :
-            s.effect === "crit"       ? `+${Math.round((s.critBoost||0)*100)}% Crit` :
-            s.effect === "defense"    ? `+${s.defBoost||0} Def` :
+            s.effect === "crit"       ? "Guaranteed Crit ×2" :
+            s.effect === "defense"    ? "+50% Defense" :
             s.effect === "heal"       ? `${Math.round((s.healPercent||0)*100)}% Lifesteal` :
             s.effect === "playerHeal" ? "Heal Self" :
-            s.effect === "reflect"    ? "Reflect" :
-            s.effect === "dodge"      ? "Dodge+" :
+            s.effect === "reflect"    ? "No extra effect" :
+            s.effect === "dodge"      ? "Stealth 2 rounds" :
             null;
           return (
             <div key={s.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 0", borderBottom: "1px solid rgba(212,175,55,0.07)" }}>
@@ -4239,7 +4539,7 @@ const heroUrl = "hero_sprite.png";
                   {type === "special" && tag(`${Math.round(s.hpCostPercent * 100)}% HP`, "hp")}
                   {s.hitCount         && tag(`×${s.hitCount} Hits`, "hits")}
                   {effectLabel        && tag(effectLabel, "effect")}
-                  {duration           && tag(`🕐 ${duration}`, "dur")}
+                  {duration           && tag(`🕐 ${duration} rounds`, "dur")}
                   {tag(`Lv. ${s.level}`, "lvl")}
                 </div>
               </div>
@@ -4439,7 +4739,7 @@ const heroUrl = "hero_sprite.png";
           const idx = indices[0];
           const sellValue = Math.max(1, Math.floor((item.cost || 10) * 0.1));
           const subText = item.type === "consumable"
-            ? (item.effect === "repel" ? `${item.value} steps no encounters` : `+${item.value} HP`)
+            ? (item.effect === "repel" ? `${item.value} steps no encounters` : `${item.healPercent ? `+${Math.round(item.healPercent * 100)}% HP` : `+${item.value} HP`}`)
             : item.type === "armor"
               ? `${item.rarity || "Normal"} • ${item.slot.charAt(0).toUpperCase() + item.slot.slice(1)}${item.bonusDamage > 0 ? ` • +${item.bonusDamage} Dmg` : ""}${item.bonusDefense > 0 ? ` • +${item.bonusDefense} Def` : ""}${item.itemLevel ? ` • Lvl ${item.itemLevel}` : ""}`
               : item.type === "deliveryitem" ? "📬 Delivery" : "Quest Item";
@@ -4540,10 +4840,18 @@ const heroUrl = "hero_sprite.png";
         const ck = `${tx},${ty}`;
         if (cities[ck]) {
           const hasTurnIn = quests.some(q => q.accepted && q.originCity === cities[ck].name && isQuestComplete(q));
-          const isVisited = visitedCities.has(cities[ck].name);  // ✅ Check if visited
-          ctx.fillStyle = hasTurnIn ? "#4ade80" : (isVisited ? "#0088ff" : "#d4af37");  // ✅ Blue if visited, yellow if not
+          const isVisited = visitedCities.has(cities[ck].name);
+          const isDeliveryTarget = quests.some(q => q.accepted && q.questKind === "deliver" && q.targetCityX === tx && q.targetCityY === ty);
+          ctx.fillStyle = hasTurnIn ? "#4ade80" : (isDeliveryTarget ? "#ff88ff" : (isVisited ? "#0088ff" : "#d4af37"));
           const ms = Math.max(2, zoom.px);
           ctx.fillRect(px, py, ms, ms);
+          // Draw ring around delivery target cities
+          if (isDeliveryTarget) {
+            ctx.strokeStyle = "#ff88ff";
+            ctx.lineWidth = 1;
+            const ring = Math.max(3, ms + 2);
+            ctx.strokeRect(px - 1, py - 1, ring, ring);
+          }
         }
 
         if (caves[ck]) {
@@ -4688,19 +4996,22 @@ const heroUrl = "hero_sprite.png";
         const px = (dx + zoom.radius) * zoom.px;
         const py = (dy + zoom.radius) * zoom.px;
         
-        // ✅ Draw text BELOW chunk center (offset +20 pixels down)
+        // ✅ Draw text BELOW chunk center
         const textY = py + 20;
+        const lineHeight = 14;
         
+        // ✅ FIRST LINE: Region Name (centered)
+        ctx.fillStyle = "#ffffff";
+        ctx.fillText(chunk.name, px, textY);
+        
+        // ✅ SECOND LINE: Level Range (centered, below name)
         let levelText;
         if (chunk.isDynamic) {
-          levelText = `${chunk.name}\n(Dynamic)`;
+          levelText = "(Dynamic)";
         } else {
-          levelText = `${chunk.name}\nLv. ${chunk.levelRange[0]}-${chunk.levelRange[1]}`;
+          levelText = `Lv. ${chunk.levelRange[0]}-${chunk.levelRange[1]}`;
         }
-        
-        // ✅ NO background rectangle - just white text
-        ctx.fillStyle = "#ffffff";
-        ctx.fillText(levelText, px, textY);
+        ctx.fillText(levelText, px, textY + lineHeight);
       }
     }
 
@@ -4771,6 +5082,7 @@ const heroUrl = "hero_sprite.png";
           <span>🔴 You</span>
           <span style={{ color: "#d4af37" }}>■ City</span>
           <span style={{ color: "#4ade80" }}>■ Quest turn-in</span>
+          <span style={{ color: "#ff88ff" }}>■ Delivery target</span>
           <span>📍 {pos.x}, {pos.y}</span>
           <span style={S.badge(difficulty.color)}>{difficulty.name}</span>
           <span style={{ opacity: 0.5 }}>Scroll to zoom</span>
@@ -4787,10 +5099,10 @@ const heroUrl = "hero_sprite.png";
     </div>
   );
 
-  const levelUpPopup = levelUpMsg && (
+  const levelUpPopup = levelUpMsg && screen !== "combat" && (
     <div style={{
       position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3000,
-    }} onClick={() => setLevelUpMsg(null)}>
+    }}>
       <div onClick={e => e.stopPropagation()} style={{
         ...S.panel, maxWidth: 380, width: "90%", textAlign: "center",
         border: "2px solid #d4af37", boxShadow: "0 0 40px #d4af3744",
@@ -4806,7 +5118,7 @@ const heroUrl = "hero_sprite.png";
     </div>
   );
 
-  const abilityChoicePopupElement = abilityChoicePopup && (
+  const abilityChoicePopupElement = abilityChoicePopup && !levelUpMsg && screen !== "combat" && (
     <div style={{
       position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3001,
     }}>
@@ -4938,7 +5250,20 @@ const heroUrl = "hero_sprite.png";
           {/* Combat Log - Left */}
           <div ref={combatLogRef} style={{ ...S.panel, flex: "0 0 240px", height: 420, overflowY: "auto", marginBottom: 0 }}>
             <div style={{ fontSize: 14, opacity: 0.5, marginBottom: 6 }}>Combat Log</div>
-            {combatLog.map((msg, i) => <div key={i} style={{ fontSize: 14, padding: "4px 0", borderBottom: "1px solid #d4af3711" }}>{msg}</div>)}
+            {combatLog.map((msg, i) => {
+              // ✅ Parse **text** to bold
+              const parts = msg.split(/(\*\*[^*]+\*\*)/);
+              return (
+                <div key={i} style={{ fontSize: 14, padding: "4px 0", borderBottom: "1px solid #d4af3711" }}>
+                  {parts.map((part, idx) => {
+                    if (part.startsWith("**") && part.endsWith("**")) {
+                      return <span key={idx} style={{ fontWeight: 700, color: "#d4af37" }}>{part.slice(2, -2)}</span>;  // ✅ Bold + Gold color
+                    }
+                    return <span key={idx}>{part}</span>;
+                  })}
+                </div>
+              );
+            })}
           </div>
 
           {/* Combat Panel - Right */}
@@ -4957,7 +5282,7 @@ const heroUrl = "hero_sprite.png";
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, flex: 1 }}>
                   <div style={{
                     width: 120, height: 120, borderRadius: 12,
-                    background: "radial-gradient(circle, #2a3a5a, #1a2040)",
+                    background: "radial-gradient(circle, #1a1a2e, #0a0a12)",
                     display: "flex", alignItems: "center", justifyContent: "center",
                     boxShadow: playerHit ? "0 0 20px #4ade80aa" : playerDodge ? "0 0 20px #60a5faaa" : "0 0 8px #0008",
                     transition: "box-shadow 0.3s", overflow: "hidden",
@@ -4965,8 +5290,12 @@ const heroUrl = "hero_sprite.png";
                     <HeroImage size={110} heroUrl={heroUrl} />
                   </div>
                   {/* ✅ NEW: Player Name + Status Badge */}
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
                     <div style={{ fontWeight: 700, fontSize: 15 }}>{playerName}</div>
+                    {/* Level badge — color always white for player */}
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#facc15", letterSpacing: 1 }}>
+                      Lv.{level}
+                    </div>
                     {playerStatus.type && playerStatus.duration > 0 && (
                       <div style={{
                         display: "flex",
@@ -5181,8 +5510,7 @@ const heroUrl = "hero_sprite.png";
               <div style={{ display: "flex", gap: 8, justifyContent: "center", marginBottom: 12, flexWrap: "wrap" }}>
                 <button onClick={attack} style={{ ...S.btn, ...S.btnDanger, flex: 1, minWidth: 80 }} disabled={enemyHp <= 0}>⚔️ Attack</button>
                 <button onClick={() => setCombatItemsOpen(prev => !prev)} style={{ ...S.btn, ...S.btnSuccess, flex: 1, minWidth: 80, ...(combatItemsOpen ? { borderColor: "#4ade80", background: "linear-gradient(180deg, #1a2a0e, #0f1a08)" } : {}) }} disabled={enemyHp <= 0}>🧪 Items</button>
-                <button onClick={() => setSpellsOpen(prev => !prev)} style={{ ...S.btn, flex: 1, minWidth: 80, ...(spellsOpen ? { borderColor: "#4169E1", background: "linear-gradient(180deg, #0e1a2a, #081018)" } : {}), borderColor: learnedAbilities.spells.length > 0 ? "#4169E1" : "#999", color: learnedAbilities.spells.length > 0 ? "#4169E1" : "#999" }} disabled={enemyHp <= 0 || learnedAbilities.spells.length === 0}>🔮 Spells</button>
-                <button onClick={() => setSpecialsOpen(prev => !prev)} style={{ ...S.btn, flex: 1, minWidth: 80, ...(specialsOpen ? { borderColor: "#ff8800", background: "linear-gradient(180deg, #2a1a0e, #1a0f08)" } : {}), borderColor: learnedAbilities.specials.length > 0 ? "#ff8800" : "#999", color: learnedAbilities.specials.length > 0 ? "#ff8800" : "#999" }} disabled={enemyHp <= 0 || learnedAbilities.specials.length === 0}>⚡ Specials</button>
+                <button onClick={() => setSkillsOpen(prev => !prev)} style={{ ...S.btn, flex: 1, minWidth: 80, ...(skillsOpen ? { borderColor: "#a0c4ff", background: "linear-gradient(180deg, #0e1a3a, #081028)" } : {}), borderColor: (learnedAbilities.spells.length > 0 || learnedAbilities.specials.length > 0) ? "#a0c4ff" : "#999", color: (learnedAbilities.spells.length > 0 || learnedAbilities.specials.length > 0) ? "#a0c4ff" : "#999" }} disabled={enemyHp <= 0 || (learnedAbilities.spells.length === 0 && learnedAbilities.specials.length === 0)}>✨ Skills</button>
                 <button onClick={flee} style={{ ...S.btn, flex: 1, minWidth: 80 }} disabled={enemyHp <= 0}>🏃 Flee</button>
               </div>
               {combatItemsOpen && enemyHp > 0 && (() => {
@@ -5208,7 +5536,7 @@ const heroUrl = "hero_sprite.png";
                         <div>
                           <span style={{ fontSize: 15, fontWeight: 600 }}>{item.name}</span>
                           {count > 1 && <span style={{ fontSize: 14, fontWeight: 700, ...S.gold, marginLeft: 6 }}>×{count}</span>}
-                          <span style={{ fontSize: 13, opacity: 0.5, marginLeft: 6 }}>{item.effect === "repel" ? `${item.value} steps` : `+${item.value} HP`}</span>
+                          <span style={{ fontSize: 13, opacity: 0.5, marginLeft: 6 }}>{item.effect === "repel" ? `${item.value} steps` : `${item.healPercent ? `+${Math.round(item.healPercent * 100)}% HP` : `+${item.value} HP`}`}</span>
                         </div>
                         <button onClick={() => useItemInCombat(item, idx)} style={{ ...S.btn, ...S.btnSuccess, padding: "4px 12px", fontSize: 14 }}>Use</button>
                       </div>
@@ -5216,45 +5544,49 @@ const heroUrl = "hero_sprite.png";
                   </div>
                 );
               })()}
-              {spellsOpen && enemyHp > 0 && learnedAbilities.spells.length > 0 && (
-                <div style={{ background: "#0066ff11", borderRadius: 8, padding: 10, marginBottom: 12, border: "1px solid #0066ff33" }}>
-                  <div style={{ fontSize: 14, opacity: 0.7, marginBottom: 6, color: "#4169E1", fontWeight: 600 }}>🔮 Spells (Mana: {mana}/{stats.maxMana}):</div>
-                  {learnedAbilities.spells.map(spellId => {
-                    const spell = SPELLS.find(s => s.id === spellId);
-                    if (!spell) return null;
-                    const canCast = mana >= spell.manaCost;
-                    return (
-                      <div key={spell.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 0", borderBottom: "1px solid #0066ff22", opacity: canCast ? 1 : 0.5 }}>
-                        <div>
-                          <span style={{ fontSize: 15, fontWeight: 600, color: "#4169E1" }}>{spell.name}</span>
-                          <span style={{ fontSize: 13, opacity: 0.6, marginLeft: 6 }}>{spell.manaCost} Mana</span>
-                        </div>
-                        <button onClick={() => castSpell(spell.id)} style={{ ...S.btn, padding: "4px 12px", fontSize: 14, color: "#4169E1", borderColor: "#4169E1", ...(canCast ? {} : S.btnDisabled) }} disabled={!canCast || enemyHp <= 0}>Cast</button>
-                      </div>
-                    );
-                  })}
+              {/* ✅ NEW: Combined SKILLS (Spells + Specials) */}
+              {skillsOpen && enemyHp > 0 && (learnedAbilities.spells.length > 0 || learnedAbilities.specials.length > 0) && (
+                <div style={{ background: "#1a3a5a11", borderRadius: 8, padding: 12, marginBottom: 12, border: "1px solid #4169E133" }}>
+                  <div style={{ fontSize: 14, opacity: 0.8, marginBottom: 10, fontWeight: 700, color: "#a0c4ff" }}>✨ SKILLS</div>
+                  
+                  {/* Skills Grid */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(60px, 1fr))", gap: 8, marginBottom: 8 }}>
+                    {/* SPELLS */}
+                    {learnedAbilities.spells.map(spellId => {
+                      const spell = SPELLS.find(s => s.id === spellId);
+                      if (!spell) return null;
+                      return (
+                        <SpellButton
+                          key={spell.id}
+                          spell={spell}
+                          mana={mana}
+                          maxMana={stats.maxMana}
+                          damage={stats.damage}
+                          onCast={castSpell}
+                          disabled={enemyHp <= 0}
+                        />
+                      );
+                    })}
+                    
+                    {/* SPECIALS */}
+                    {learnedAbilities.specials.map(specialId => {
+                      const special = SPECIALS.find(s => s.id === specialId);
+                      if (!special) return null;
+                      return (
+                        <SpecialButton
+                          key={special.id}
+                          special={special}
+                          hp={hp}
+                          maxHp={stats.maxHp}
+                          onUse={useSpecial}
+                          disabled={enemyHp <= 0}
+                        />
+                      );
+                    })}
+                  </div>
                 </div>
               )}
-              {specialsOpen && enemyHp > 0 && learnedAbilities.specials.length > 0 && (
-                <div style={{ background: "#ff660011", borderRadius: 8, padding: 10, marginBottom: 12, border: "1px solid #ff660033" }}>
-                  <div style={{ fontSize: 14, opacity: 0.7, marginBottom: 6, color: "#ff8800", fontWeight: 600 }}>⚡ Specials (HP: {hp}/{stats.maxHp}):</div>
-                  {learnedAbilities.specials.map(specialId => {
-                    const special = SPECIALS.find(s => s.id === specialId);
-                    if (!special) return null;
-                    const hpCost = Math.ceil(hp * special.hpCostPercent);
-                    const canUse = hp - hpCost > 1;
-                    return (
-                      <div key={special.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 0", borderBottom: "1px solid #ff660022", opacity: canUse ? 1 : 0.5 }}>
-                        <div>
-                          <span style={{ fontSize: 15, fontWeight: 600, color: "#ff8800" }}>{special.name}</span>
-                          <span style={{ fontSize: 13, opacity: 0.6, marginLeft: 6 }}>{Math.round(special.hpCostPercent * 100)}% HP ({hpCost})</span>
-                        </div>
-                        <button onClick={() => useSpecial(special.id)} style={{ ...S.btn, padding: "4px 12px", fontSize: 14, color: "#ff8800", borderColor: "#ff8800", ...(canUse ? {} : S.btnDisabled) }} disabled={!canUse || enemyHp <= 0}>Use</button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+
             </div>
           </div>
         </div>
@@ -5269,45 +5601,61 @@ const heroUrl = "hero_sprite.png";
         {levelUpPopup}
         {deathPopupOverlay}
         {worldMapOverlay}
-        <div style={{ maxWidth: 560, width: "100%" }}>
+        {/* Main Menu Button */}
+        <button
+          onClick={() => { doSave(); onMainMenu?.(); }}
+          style={{
+            position: "fixed", top: 10, right: 12, zIndex: 2000,
+            ...S.btn,
+          }}
+        >
+          💾 Main Menu
+        </button>
+        <div style={{ maxWidth: 560, width: "100%", display: "flex", flexDirection: "column", height: "auto", maxHeight: "calc(100vh - 80px)" }}>
           <PlayerHeader {...{ playerName, level, xp, xpToLevel, gold, hp, mana, stats }} />
 
-          <div style={{ ...S.panel, textAlign: "center" }}>
-            <h2 style={{ ...S.gold, margin: "0 0 4px 0", fontSize: 26 }}>🏘️ {currentCity.name}</h2>
-            <span style={S.badge(TIER_COLORS[currentCity.difficulty] || "#d4af37")}>{currentCity.difficulty}</span>
-          </div>
-
-          {activeQuests.length > 0 && (
-            <div style={S.panel}>
-              <div style={{ fontSize: 17, fontWeight: 700, ...S.gold, marginBottom: 6 }}>Active Quests ({activeQuests.length})</div>
-              {activeQuests.map(q => {
-                const progress = getQuestProgress(q);
-                const target = q.questKind === "chunkBossHunt" ? q.targetBosses : q.targetCount;
-                const complete = progress >= target;
-                const icon = q.questKind === "kill" ? "🗡️" : q.questKind === "deliver" ? "📬" : q.questKind === "chunkBossHunt" ? "⚔️" : "📦";
-                return (
-                  <div key={q.id} style={{ fontSize: 21, padding: "6px 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span>{icon} {q.title} ({progress}/{target})</span>
-                    <span style={{ fontSize: 17, opacity: 0.6 }}>
-                      {complete ? "✅ Ready" : `📍 ${q.originCity} (${q.originX}, ${q.originY})`}
-                    </span>
-                  </div>
-                );
-              })}
+          {/* ✅ Scrollable content area */}
+          <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
+            <div style={{ ...S.panel, textAlign: "center" }}>
+              <h2 style={{ ...S.gold, margin: "0 0 4px 0", fontSize: 26 }}>🏘️ {currentCity.name}</h2>
+              <span style={S.badge(TIER_COLORS[currentCity.difficulty] || "#d4af37")}>{currentCity.difficulty}</span>
             </div>
-          )}
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 8 }}>
-            <button onClick={() => setScreen("merchant")} style={S.btn}>🛒 Merchant</button>
-            <button onClick={() => setScreen("blacksmith")} style={S.btn}>🔨 Blacksmith</button>
-            <button onClick={() => setScreen("inn")} style={S.btn}>🏨 Inn</button>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
-            <button onClick={() => setScreen("questgiver")} style={S.btn}>⚔️ Questgiver</button>
-            <button onClick={() => setScreen("bulletin")} style={S.btn}>📋 Bulletin Board</button>
-          </div>
+            {activeQuests.length > 0 && (
+              <div style={S.panel}>
+                <div style={{ fontSize: 17, fontWeight: 700, ...S.gold, marginBottom: 6 }}>Active Quests ({activeQuests.length})</div>
+                {activeQuests.map(q => {
+                  const progress = getQuestProgress(q);
+                  const target = q.questKind === "chunkBossHunt" ? q.targetBosses : q.targetCount;
+                  const complete = progress >= target;
+                  const icon = q.questKind === "kill" ? "🗡️" : q.questKind === "deliver" ? "📬" : q.questKind === "chunkBossHunt" ? "⚔️" : "📦";
+                  return (
+                    <div key={q.id} style={{ fontSize: 21, padding: "6px 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span>{icon} {q.title} ({progress}/{target})</span>
+                      <span style={{ fontSize: 17, opacity: 0.6 }}>
+                        {complete ? "✅ Ready" : `📍 ${q.originCity} (${q.originX}, ${q.originY})`}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
-          <button onClick={() => { setScreen("world"); setCurrentCity(null); addLog(`Left ${currentCity.name}`); }} style={{ ...S.btn, ...S.btnDanger, width: "100%" }}>🚪 Leave City</button>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 8, padding: "0 12px" }}>
+              <button onClick={() => setScreen("merchant")} style={S.btn}>🛒 Merchant</button>
+              <button onClick={() => setScreen("blacksmith")} style={S.btn}>🔨 Blacksmith</button>
+              <button onClick={() => setScreen("inn")} style={S.btn}>🏨 Inn</button>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 20, padding: "0 12px" }}>
+              <button onClick={() => setScreen("questgiver")} style={S.btn}>⚔️ Questgiver</button>
+              <button onClick={() => setScreen("bulletin")} style={S.btn}>📋 Bulletin Board</button>
+            </div>
+            
+            {/* ✅ Leave City Button - im Content Flow */}
+            <div style={{ padding: "0 12px", marginBottom: 20 }}>
+              <button onClick={() => { setScreen("world"); setCurrentCity(null); addLog(`Left ${currentCity.name}`); }} style={{ ...S.btn, ...S.btnDanger, width: "100%" }}>🚪 Leave City</button>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -5424,7 +5772,7 @@ const heroUrl = "hero_sprite.png";
               <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid #d4af3711" }}>
                 <div>
                   <div style={{ fontWeight: 600, fontSize: 21 }}>{item.name}{owned > 0 && <span style={{ fontSize: 15, opacity: 0.5, marginLeft: 6 }}>({owned} in bag)</span>}</div>
-                  <div style={{ fontSize: 17, opacity: 0.6 }}>{item.effect === "repel" ? `No encounters for ${item.value} steps` : `Heals ${item.value} HP`}</div>
+                  <div style={{ fontSize: 17, opacity: 0.6 }}>{item.effect === "repel" ? `No encounters for ${item.value} steps` : `${item.healPercent ? `Heals +${Math.round(item.healPercent * 100)}% HP` : `Heals ${item.value} HP`}`}</div>
                 </div>
                 <button onClick={() => buyItem(item)} style={{ ...S.btn, padding: "6px 14px", fontSize: 21, ...(gold < item.cost ? S.btnDisabled : {}) }}>
                   {item.cost}g
@@ -5564,17 +5912,80 @@ const heroUrl = "hero_sprite.png";
               </div>
             )}
 
-            {availableQuests.map((q) => {
-              const kindIcon = q.questKind === "kill" ? "🗡️" : q.questKind === "deliver" ? "📬" : q.questKind === "chunkBossHunt" ? "⚔️" : "📦";
-              return (
-                <div key={q.id} style={{ padding: "10px 0", borderBottom: "1px solid #d4af3711" }}>
-                  <div style={{ fontWeight: 600, fontSize: 21 }}>{kindIcon} {q.title}</div>
-                  <div style={{ fontSize: 21, opacity: 0.7, marginBottom: 4 }}>{q.description}</div>
-                  <div style={{ fontSize: 17, ...S.gold }}>Reward: {q.goldReward}g + {q.xpReward} XP</div>
-                  <button onClick={() => acceptQuest(q, currentCity.name, currentCity.x, currentCity.y)} style={{ ...S.btn, ...S.btnSuccess, padding: "5px 12px", fontSize: 17, marginTop: 4 }}>Accept</button>
+            {/* ✅ BOSS HUNT QUESTS - SEPARATE HIGHLIGHTED SECTION */}
+            {availableQuests.filter(q => q.questKind === "chunkBossHunt").length > 0 && (
+              <div style={{ 
+                marginBottom: 12, 
+                padding: 12, 
+                background: "#ef444422",  // ✅ Red tint for emphasis
+                borderRadius: 8, 
+                border: "2px solid #ef4444",  // ✅ Bold red border
+                boxShadow: "0 0 16px #ef444433"  // ✅ Glow effect
+              }}>
+                <div style={{ fontSize: 20, fontWeight: 800, color: "#ff6b6b", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+                  👑 MAIN QUESTS 👑  {/* ✅ Main Quest label */}
                 </div>
-              );
-            })}
+                {availableQuests.filter(q => q.questKind === "chunkBossHunt").map((q) => {
+                  const kindIcon = "⚔️";
+                  return (
+                    <div key={q.id} style={{ 
+                      padding: "12px", 
+                      marginBottom: 8,
+                      background: "#1a0a0a",  // ✅ Darker background
+                      borderRadius: 6,
+                      border: "1px solid #ef4444",
+                      boxShadow: "inset 0 0 8px #ef444411"
+                    }}>
+                      <div style={{ fontWeight: 700, fontSize: 22, color: "#ff6b6b", marginBottom: 4 }}>
+                        {kindIcon} {q.title}
+                      </div>
+                      <div style={{ fontSize: 16, opacity: 0.8, marginBottom: 6, color: "#ffa5a5" }}>
+                        {q.description}
+                      </div>
+                      <div style={{ fontSize: 17, ...S.gold, marginBottom: 8 }}>
+                        Reward: {q.goldReward}g + {q.xpReward} XP
+                        {q.rewardLoot === "boss" && (
+                          <span style={{ color: "#ff6b6b", fontWeight: 700 }}> + Chance for extra Equipment!</span>
+                        )}
+                      </div>
+                      <button 
+                        onClick={() => acceptQuest(q, currentCity.name, currentCity.x, currentCity.y)} 
+                        style={{ 
+                          ...S.btn, 
+                          ...S.btnSuccess, 
+                          padding: "8px 16px", 
+                          fontSize: 18,
+                          background: "linear-gradient(180deg, #ef4444, #dc2626)",  // ✅ Red gradient
+                          borderColor: "#ff6b6b",
+                          color: "#fff",
+                          fontWeight: 700
+                        }}
+                      >
+                        🎯 Accept Main Quest
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* ✅ REGULAR QUESTS - Below main quests */}
+            {availableQuests.filter(q => q.questKind !== "chunkBossHunt").length > 0 && (
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 600, color: "#d4af37", marginBottom: 8, marginTop: 8 }}>Other Quests</div>
+                {availableQuests.filter(q => q.questKind !== "chunkBossHunt").map((q) => {
+                  const kindIcon = q.questKind === "kill" ? "🗡️" : q.questKind === "deliver" ? "📬" : "📦";
+                  return (
+                    <div key={q.id} style={{ padding: "10px 0", borderBottom: "1px solid #d4af3711" }}>
+                      <div style={{ fontWeight: 600, fontSize: 21 }}>{kindIcon} {q.title}</div>
+                      <div style={{ fontSize: 21, opacity: 0.7, marginBottom: 4 }}>{q.description}</div>
+                      <div style={{ fontSize: 17, ...S.gold }}>Reward: {q.goldReward}g + {q.xpReward} XP</div>
+                      <button onClick={() => acceptQuest(q, currentCity.name, currentCity.x, currentCity.y)} style={{ ...S.btn, ...S.btnSuccess, padding: "5px 12px", fontSize: 17, marginTop: 4 }}>Accept</button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
           <button onClick={() => setScreen("city")} style={{ ...S.btn, width: "100%" }}>← Back</button>
         </div>
@@ -5612,18 +6023,19 @@ const heroUrl = "hero_sprite.png";
             )}
 
             {bulletinQuests.map((q) => {
-              const alreadyActive = quests.some(eq => eq.bulletinOriginId === q.id && eq.accepted);
+              // ✅ Prüfe ob diese Quest bereits akzeptiert und aktiv ist
+              const alreadyActive = quests.some(eq => eq.id === q.id && eq.accepted);
+              
+              // ✅ Zeige Quest nur wenn NICHT aktiv
+              if (alreadyActive) return null;
+              
               const kindIcon = q.questKind === "kill" ? "🗡️" : q.questKind === "deliver" ? "📬" : "📦";
               return (
                 <div key={q.id} style={{ padding: "10px 0", borderBottom: "1px solid #d4af3711" }}>
                   <div style={{ fontWeight: 600, fontSize: 21 }}>{kindIcon} {q.title}</div>
                   <div style={{ fontSize: 21, opacity: 0.7, marginBottom: 4 }}>{q.description}</div>
                   <div style={{ fontSize: 17, ...S.gold }}>Reward: {q.goldReward}g + {q.xpReward} XP</div>
-                  {!alreadyActive ? (
-                    <button onClick={() => acceptQuest({ ...q, id: `bb_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, bulletinOriginId: q.id, killCount: 0 }, currentCity.name, currentCity.x, currentCity.y)} style={{ ...S.btn, ...S.btnSuccess, padding: "5px 12px", fontSize: 17, marginTop: 4 }}>Accept</button>
-                  ) : (
-                    <span style={{ fontSize: 17, opacity: 0.5 }}>In progress</span>
-                  )}
+                  <button onClick={() => acceptQuest({ ...q, killCount: 0 }, currentCity.name, currentCity.x, currentCity.y)} style={{ ...S.btn, ...S.btnSuccess, padding: "5px 12px", fontSize: 17, marginTop: 4 }}>Accept</button>
                 </div>
               );
             })}
@@ -5677,7 +6089,20 @@ const heroUrl = "hero_sprite.png";
           {/* Event Log */}
           <div style={{ ...S.panel, flex: 1, minWidth: 160, maxHeight: VIEW_SIZE * (TILE_PX + 1) + 8, overflowY: "auto", marginBottom: 0 }}>
             <div style={{ fontSize: 17, opacity: 0.5, marginBottom: 6 }}>Event Log</div>
-            {log.map((msg, i) => <div key={i} style={{ fontSize: 21, padding: "5px 0", opacity: 0.8, borderBottom: "1px solid #d4af3708" }}>{msg}</div>)}
+            {log.map((msg, i) => {
+              // ✅ Parse **text** to bold
+              const parts = msg.split(/(\*\*[^*]+\*\*)/);
+              return (
+                <div key={i} style={{ fontSize: 21, padding: "5px 0", opacity: 0.8, borderBottom: "1px solid #d4af3708" }}>
+                  {parts.map((part, idx) => {
+                    if (part.startsWith("**") && part.endsWith("**")) {
+                      return <span key={idx} style={{ fontWeight: 700, color: "#d4af37" }}>{part.slice(2, -2)}</span>;  // ✅ Bold + Gold color
+                    }
+                    return <span key={idx}>{part}</span>;
+                  })}
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -6003,7 +6428,7 @@ export default function RPGGame() {
   }
 
   if (gameState === "playing" && playerData) {
-    return <><GlobalStyles /><Game playerData={playerData} onSaveSlotUpdate={(slot) => {}} /></>;
+    return <><GlobalStyles /><Game playerData={playerData} onMainMenu={() => { setGameState("menu"); setPlayerData(null); }} onSaveSlotUpdate={(slot) => {}} /></>;
   }
 
   // Loading state (waiting for useEffect to check localStorage)
@@ -6016,3 +6441,4 @@ export default function RPGGame() {
     </>
   );
 }
+
