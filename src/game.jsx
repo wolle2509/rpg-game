@@ -1562,11 +1562,11 @@ function generateQuestgiverQuests(itemLevel, cities, originCityName, chunkX, chu
 
   const DELIVER_ITEMS = ["Sealed Letter", "Royal Package", "Merchant's Goods", "Sacred Relic", "Map Fragment", "Enchanted Scroll", "Rare Medicine", "Trade Agreement", "Forbidden Tome", "Golden Chalice"];
 
-  // CHUNK BOSS HUNT QUEST
+  // CHUNK BOSS HUNT QUEST — shown at every city in the region
   const bossQuestId = `chunk_boss_${chunkX}_${chunkY}`;
   const alreadyAccepted = !!acceptedChunkBossQuests?.[`chunk_${chunkX}_${chunkY}`];
   const alreadyCompleted = completedQuestIds.has(bossQuestId);
-  if (isInSameChunk && chunkX !== undefined && chunkY !== undefined && !alreadyAccepted && !alreadyCompleted) {
+  if (chunkX !== undefined && chunkY !== undefined && !alreadyAccepted && !alreadyCompleted) {
     const regionLabel = regionName ? ` in ${regionName}` : "";
     quests.push({
       id: bossQuestId,
@@ -2348,9 +2348,6 @@ function Game({ playerData, onMainMenu }) {
   const isLoaded = !playerData.isNew && playerData.worldSeed != null;
   const playerName = playerData.name || playerData.playerName;
   const initialAttrs = playerData.attrs || playerData.attributes;
-// ✅ EMBEDDED SPRITE DATA - Base64 encoded PNG
-const SPRITE_SHEET_BASE64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAACSQAAAQQCAYAAADx6ce1AAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4aWYAAHjabVDRDUMhCPx3io4gHiqOY/tek27Q8YuCybPtJR4nKJ6E8/16httAIg6cq5RWSlRw45a6ComGPpkiT55IHJtnt3zQyHZCU9AIK0ixSCvvF1akripfGsnDC/e90NgdyFejZAHD0dCHN2reCMkK5A26fSuWJvX6hfsZd4itMIhlt/2zrzq9I+s7SOkEISoDbAYwVgnoKjA560FCVU1g5YzlRAfyb04L4QPxHlkgWT1EmAAAAYVpQ0NQSUNDIHByb2ZpbGUAAHicfZG9S8NQFMVPU0tFKh3sIOIQpDrZRUUcSxWLYKG0FVp1MHnpFzRpSFJcHAXXgoMfi1UHF2ddHVwFQfADxD9AnBRdpMT7kkKLGC883o/z7jm8dx8gtGpMNfvigKpZRiaZEPOFVTH4Cj8CCMOHMYmZ";
-
 // ✅ SPRITE MAP from JSON - Maps sprite keys to grid positions
 const SPRITE_MAP = {
   "ember_drake": { row: 0, col: 0 },
@@ -2391,7 +2388,7 @@ const SPRITE_MAP = {
   "wasp_scout": { row: 3, col: 8 },
 };
 
-const spriteSheetUrl = SPRITE_SHEET_BASE64;  // ✅ Eingebettet!
+const spriteSheetUrl = "/monster_spritesheet.png";
 const heroUrl = "hero_sprite.png";
   const currentSlot = playerData.selectedSlot ?? 0;  // ✅ Get slot number
 
@@ -2843,8 +2840,12 @@ const heroUrl = "hero_sprite.png";
       setEnemyStatus({ type: null, duration: 0, damagePerTurn: 0 });
       setPlayerBuffs({ active: [] });
       setEnemyBuffs({ active: [] });
+      setSkillsOpen(false);
+      setCombatItemsOpen(false);
       
       setCombatStartPos({ x: pos.x, y: pos.y });  // ✅ NEW: Speichere Start Position
+      setSkillsOpen(false);
+      setCombatItemsOpen(false);
       setEnemy(en);
       setEnemyHp(en.hp);
       setCombatLog([`A wild ${en.name} appears!`]);
@@ -4061,34 +4062,28 @@ const heroUrl = "hero_sprite.png";
     const bossAccepted = !!acceptedChunkBossQuests?.[`chunk_${chunkX}_${chunkY}`];
     const bossCompleted = completedQuestIds.has(bossQuestId);
 
-    // Invalidate cache for this city if boss quest status changed
+    // Invalidate cache if boss quest status changed
     const cached = cityQuestsCache[cityName];
     const cachedHasBoss = cached?.some(q => q.questKind === "chunkBossHunt");
     const shouldHaveBoss = !bossAccepted && !bossCompleted;
     const cacheStale = cachedHasBoss !== shouldHaveBoss;
 
     if (!cached || cacheStale) {
-      // Derive itemLevel from city (stored when chunk was generated, fallback via getDifficulty)
       let cityItemLevel = city?.itemLevel;
       if (!cityItemLevel && city) {
         cityItemLevel = getDifficulty(city.x, city.y, level).itemLevel;
       }
       cityItemLevel = cityItemLevel || 1;
 
-      const playerChunkX = Math.floor(pos.x / CHUNK_SIZE);
-      const playerChunkY = Math.floor(pos.y / CHUNK_SIZE);
-      const isInSameChunk = (chunkX === playerChunkX && chunkY === playerChunkY);
-
-      // Get region name from chunk tier
       const chunk = city ? getChunkTier(city.x, city.y) : null;
       const regionName = chunk?.name || "";
 
-      const generated = generateQuestgiverQuests(cityItemLevel, cities, cityName, chunkX, chunkY, acceptedChunkBossQuests, isInSameChunk, worldSeed, regionName, completedQuestIds);
+      const generated = generateQuestgiverQuests(cityItemLevel, cities, cityName, chunkX, chunkY, acceptedChunkBossQuests, false, worldSeed, regionName, completedQuestIds);
       setCityQuestsCache(prev => ({ ...prev, [cityName]: generated }));
       return generated;
     }
     return cached;
-  }, [cityQuestsCache, cities, acceptedChunkBossQuests, completedQuestIds, pos, level, worldSeed]);
+  }, [cityQuestsCache, cities, acceptedChunkBossQuests, completedQuestIds, level, worldSeed]);
 
   const getCityBulletin = useCallback((cityName, _unusedDiff) => {
     if (!cityBulletinCache[cityName]) {
@@ -4412,20 +4407,27 @@ const heroUrl = "hero_sprite.png";
         </button>
         {(() => {
           const hasSkills = learnedAbilities.spells.length > 0 || learnedAbilities.specials.length > 0;
+          const hasPending = !!abilityChoicePopup;
           return (
             <button
-              onClick={() => hasSkills && setSkillsOpen(prev => !prev)}
+              onClick={() => {
+                if (!hasSkills && !hasPending) return;
+                setSkillsOpen(prev => !prev);
+              }}
               style={{
                 ...S.btn, flex: 1, padding: "8px 6px", fontSize: 17,
-                boxShadow: "0 2px 12px #000a",
-                background: skillsOpen ? "linear-gradient(180deg, #1a0e2a, #100814)" : "linear-gradient(180deg, #2a1f0e, #1a140a)",
-                borderColor: skillsOpen ? "#a855f7" : (hasSkills ? "#a855f7" : "#555"),
-                color: skillsOpen ? "#a855f7" : (hasSkills ? "#a855f7" : "#555"),
-                opacity: hasSkills ? 1 : 0.35,
-                cursor: hasSkills ? "pointer" : "not-allowed",
+                boxShadow: hasPending ? "0 0 12px #d4af37cc" : "0 2px 12px #000a",
+                background: hasPending
+                  ? "linear-gradient(180deg, #2a1e00, #1a1200)"
+                  : skillsOpen ? "linear-gradient(180deg, #1a0e2a, #100814)" : "linear-gradient(180deg, #2a1f0e, #1a140a)",
+                borderColor: hasPending ? "#d4af37" : skillsOpen ? "#a855f7" : (hasSkills ? "#a855f7" : "#555"),
+                color: hasPending ? "#d4af37" : skillsOpen ? "#a855f7" : (hasSkills ? "#a855f7" : "#555"),
+                opacity: (hasSkills || hasPending) ? 1 : 0.35,
+                cursor: (hasSkills || hasPending) ? "pointer" : "not-allowed",
+                animation: hasPending ? "pulse 1.2s ease-in-out infinite" : "none",
               }}
             >
-              ✨ Skills
+              ✨ Skills{hasPending ? " !" : ""}
             </button>
           );
         })()}
@@ -5118,7 +5120,7 @@ const heroUrl = "hero_sprite.png";
     </div>
   );
 
-  const abilityChoicePopupElement = abilityChoicePopup && !levelUpMsg && screen !== "combat" && (
+  const abilityChoicePopupElement = abilityChoicePopup && !levelUpMsg && screen !== "combat" && skillsOpen && (
     <div style={{
       position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3001,
     }}>
@@ -5128,53 +5130,70 @@ const heroUrl = "hero_sprite.png";
       }}>
         <h2 style={{ ...S.gold, margin: "0 0 16px 0", fontSize: 28, textAlign: "center" }}>✨ Choose a New Ability! ✨</h2>
         
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-          <div style={{ padding: 12, background: "#0066ff11", borderRadius: 8, border: "1px solid #0066ff33" }}>
-            <h3 style={{ color: "#4169E1", margin: "0 0 12px 0", fontSize: 20 }}>🔮 Spells (Mana-based)</h3>
-            {abilityChoicePopup && abilityChoicePopup.availableSpells && abilityChoicePopup.availableSpells.map(spell => (
+        {(() => {
+          const tag = (label, color, bg) => (
+            <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, fontWeight: 600, background: bg, color, border: `1px solid ${color}44`, whiteSpace: "nowrap" }}>{label}</span>
+          );
+          const effectDesc = (s) => {
+            if (s.effect === "slow")       return "-50% enemy dmg";
+            if (s.effect === "bleed")      return `Bleed ${s.bleedDuration} rounds`;
+            if (s.effect === "burn")       return `Burn ${s.burnDuration} rounds`;
+            if (s.effect === "poison")     return `Poison ${s.poisonDuration} rounds`;
+            if (s.effect === "stun")       return `Stun ${s.stunDuration} rounds`;
+            if (s.effect === "crit")       return "Guaranteed crit ×2";
+            if (s.effect === "defense")    return "+50% Defense 2 rounds";
+            if (s.effect === "heal")       return `Lifesteal ${Math.round((s.healPercent||0)*100)}%`;
+            if (s.effect === "playerHeal") return "Heals you";
+            if (s.effect === "dodge")      return "Stealth 2 rounds";
+            return null;
+          };
+          const renderCard = (ability, type) => {
+            const isSpell = type === "spell";
+            const accent = isSpell ? "#4169E1" : "#ff8800";
+            const bg = isSpell ? "#0066ff11" : "#ff660011";
+            const desc = effectDesc(ability);
+            return (
               <button
-                key={spell.id}
-                onClick={() => learnAbility(spell.id, "spell")}
+                key={ability.id}
+                onClick={() => learnAbility(ability.id, type)}
                 style={{
-                  display: "block", width: "100%", padding: 10, marginBottom: 8, borderRadius: 6,
-                  background: "#0066ff22", border: "1px solid #0066ff55", color: "#4169E1",
-                  cursor: "pointer", fontWeight: 600, fontSize: 15, textAlign: "left",
-                  transition: "all 0.2s",
+                  display: "block", width: "100%", padding: "12px 14px", marginBottom: 10, borderRadius: 8,
+                  background: bg, border: `1px solid ${accent}55`, color: "#e8d7c3",
+                  cursor: "pointer", textAlign: "left", transition: "all 0.2s",
                 }}
-                onMouseEnter={e => { e.target.style.background = "#0066ff44"; e.target.style.boxShadow = "0 0 12px #0066ff44"; }}
-                onMouseLeave={e => { e.target.style.background = "#0066ff22"; e.target.style.boxShadow = "none"; }}
+                onMouseEnter={e => { e.currentTarget.style.background = `${accent}22`; e.currentTarget.style.boxShadow = `0 0 14px ${accent}44`; }}
+                onMouseLeave={e => { e.currentTarget.style.background = bg; e.currentTarget.style.boxShadow = "none"; }}
               >
-                {spell.name} ({spell.manaCost} Mana)
+                <div style={{ fontWeight: 700, fontSize: 16, color: accent, marginBottom: 6 }}>{ability.name}</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: desc ? 6 : 0 }}>
+                  {isSpell
+                    ? tag(`${ability.manaCost} Mana`, "#60a5fa", "#60a5fa11")
+                    : tag(`${Math.round(ability.hpCostPercent * 100)}% HP`, "#f87171", "#f8717111")
+                  }
+                  {ability.dmgRange && ability.dmgRange[1] > 0 && tag(`${ability.dmgRange[0]}–${ability.dmgRange[1]} Dmg`, "#ef4444", "#ef444411")}
+                  {ability.hitCount && tag(`×${ability.hitCount} Hits`, "#fbbf24", "#fbbf2411")}
+                  {desc && tag(desc, "#c084fc", "#c084fc11")}
+                </div>
               </button>
-            ))}
-            {(!abilityChoicePopup || !abilityChoicePopup.availableSpells || abilityChoicePopup.availableSpells.length === 0) && (
-              <div style={{ opacity: 0.5, fontSize: 14 }}>No new spells available</div>
-            )}
-          </div>
-
-          <div style={{ padding: 12, background: "#ff660011", borderRadius: 8, border: "1px solid #ff660033" }}>
-            <h3 style={{ color: "#ff8800", margin: "0 0 12px 0", fontSize: 20 }}>⚡ Specials (HP-based)</h3>
-            {abilityChoicePopup && abilityChoicePopup.availableSpecials && abilityChoicePopup.availableSpecials.map(special => (
-              <button
-                key={special.id}
-                onClick={() => learnAbility(special.id, "special")}
-                style={{
-                  display: "block", width: "100%", padding: 10, marginBottom: 8, borderRadius: 6,
-                  background: "#ff660022", border: "1px solid #ff660055", color: "#ff8800",
-                  cursor: "pointer", fontWeight: 600, fontSize: 15, textAlign: "left",
-                  transition: "all 0.2s",
-                }}
-                onMouseEnter={e => { e.target.style.background = "#ff660044"; e.target.style.boxShadow = "0 0 12px #ff660044"; }}
-                onMouseLeave={e => { e.target.style.background = "#ff660022"; e.target.style.boxShadow = "none"; }}
-              >
-                {special.name} ({Math.round(special.hpCostPercent * 100)}% HP)
-              </button>
-            ))}
-            {(!abilityChoicePopup || !abilityChoicePopup.availableSpecials || abilityChoicePopup.availableSpecials.length === 0) && (
-              <div style={{ opacity: 0.5, fontSize: 14 }}>No new specials available</div>
-            )}
-          </div>
-        </div>
+            );
+          };
+          return (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+              <div style={{ padding: 12, background: "#0066ff08", borderRadius: 8, border: "1px solid #0066ff33" }}>
+                <h3 style={{ color: "#4169E1", margin: "0 0 12px 0", fontSize: 18 }}>🔮 Spells (Mana)</h3>
+                {abilityChoicePopup?.availableSpells?.length > 0
+                  ? abilityChoicePopup.availableSpells.map(s => renderCard(s, "spell"))
+                  : <div style={{ opacity: 0.5, fontSize: 13 }}>No new spells available</div>}
+              </div>
+              <div style={{ padding: 12, background: "#ff660008", borderRadius: 8, border: "1px solid #ff660033" }}>
+                <h3 style={{ color: "#ff8800", margin: "0 0 12px 0", fontSize: 18 }}>⚡ Specials (HP)</h3>
+                {abilityChoicePopup?.availableSpecials?.length > 0
+                  ? abilityChoicePopup.availableSpecials.map(s => renderCard(s, "special"))
+                  : <div style={{ opacity: 0.5, fontSize: 13 }}>No new specials available</div>}
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
@@ -5599,18 +5618,9 @@ const heroUrl = "hero_sprite.png";
       <div style={S.app}>
         {questLogOverlay}
         {levelUpPopup}
+        {abilityChoicePopupElement}
         {deathPopupOverlay}
         {worldMapOverlay}
-        {/* Main Menu Button */}
-        <button
-          onClick={() => { doSave(); onMainMenu?.(); }}
-          style={{
-            position: "fixed", top: 10, right: 12, zIndex: 2000,
-            ...S.btn,
-          }}
-        >
-          💾 Main Menu
-        </button>
         <div style={{ maxWidth: 560, width: "100%", display: "flex", flexDirection: "column", height: "auto", maxHeight: "calc(100vh - 80px)" }}>
           <PlayerHeader {...{ playerName, level, xp, xpToLevel, gold, hp, mana, stats }} />
 
@@ -5670,6 +5680,7 @@ const heroUrl = "hero_sprite.png";
       <div style={S.app}>
         {questLogOverlay}
         {levelUpPopup}
+        {abilityChoicePopupElement}
         {deathPopupOverlay}
         {worldMapOverlay}
         <div style={{ maxWidth: 560, width: "100%" }}>
@@ -5717,6 +5728,7 @@ const heroUrl = "hero_sprite.png";
       <div style={S.app}>
         {questLogOverlay}
         {levelUpPopup}
+        {abilityChoicePopupElement}
         {deathPopupOverlay}
         {worldMapOverlay}
         <div style={{ maxWidth: 560, width: "100%" }}>
@@ -5760,6 +5772,7 @@ const heroUrl = "hero_sprite.png";
       <div style={S.app}>
         {questLogOverlay}
         {levelUpPopup}
+        {abilityChoicePopupElement}
         {deathPopupOverlay}
         {worldMapOverlay}
         <div style={{ maxWidth: 560, width: "100%" }}>
@@ -5810,6 +5823,7 @@ const heroUrl = "hero_sprite.png";
       <div style={S.app}>
         {questLogOverlay}
         {levelUpPopup}
+        {abilityChoicePopupElement}
         {deathPopupOverlay}
         {worldMapOverlay}
         <div style={{ maxWidth: 560, width: "100%" }}>
@@ -5854,18 +5868,26 @@ const heroUrl = "hero_sprite.png";
 
   if (screen === "questgiver" && currentCity) {
     const cityQuests = getCityQuests(currentCity.name, currentCity.difficulty);
+    const cityChunkX = Math.floor(currentCity.x / CHUNK_SIZE);
+    const cityChunkY = Math.floor(currentCity.y / CHUNK_SIZE);
+
     const turnInableQuests = quests.filter(q => q.accepted && q.type === "questgiver" && isQuestComplete(q) && (
       (q.questKind === "deliver" && q.targetCity === currentCity.name) ||
-      (q.questKind !== "deliver" && q.originCity === currentCity.name)
+      (q.questKind === "chunkBossHunt" && q.targetChunkX === cityChunkX && q.targetChunkY === cityChunkY) ||
+      (q.questKind !== "deliver" && q.questKind !== "chunkBossHunt" && q.originCity === currentCity.name)
     ));
     // Filter out quests already taken (accepted or turned in)
     const availableQuests = cityQuests.filter(q => !completedQuestIds.has(q.id) && !quests.some(eq => eq.id === q.id));
-    const pendingQuests = quests.filter(q => q.accepted && q.type === "questgiver" && q.originCity === currentCity.name && !isQuestComplete(q));
+    const pendingQuests = quests.filter(q => q.accepted && q.type === "questgiver" && !isQuestComplete(q) && (
+      (q.questKind === "chunkBossHunt" && q.targetChunkX === cityChunkX && q.targetChunkY === cityChunkY) ||
+      (q.questKind !== "chunkBossHunt" && q.originCity === currentCity.name)
+    ));
     const allDone = availableQuests.length === 0 && turnInableQuests.length === 0 && pendingQuests.length === 0;
     return (
       <div style={S.app}>
         {questLogOverlay}
         {levelUpPopup}
+        {abilityChoicePopupElement}
         {deathPopupOverlay}
         {worldMapOverlay}
         <div style={{ maxWidth: 560, width: "100%" }}>
@@ -6000,6 +6022,7 @@ const heroUrl = "hero_sprite.png";
       <div style={S.app}>
         {questLogOverlay}
         {levelUpPopup}
+        {abilityChoicePopupElement}
         {deathPopupOverlay}
         {worldMapOverlay}
         <div style={{ maxWidth: 560, width: "100%" }}>
@@ -6051,6 +6074,7 @@ const heroUrl = "hero_sprite.png";
     <div style={S.app}>
       {questLogOverlay}
         {levelUpPopup}
+        {abilityChoicePopupElement}
         {deathPopupOverlay}
         {worldMapOverlay}
       <div style={{ maxWidth: 1000, width: "100%" }}>
@@ -6071,12 +6095,8 @@ const heroUrl = "hero_sprite.png";
               addLog(`🏘️ Entered ${city.name}`);
             }} style={{ ...S.btn, ...S.btnSuccess, padding: "6px 14px", fontSize: 17 }}>🏘️ Enter {cities[`${pos.x},${pos.y}`].name}</button>
           )}
-          <button onClick={doSave} style={{ ...S.btn, padding: "6px 14px", fontSize: 17, marginLeft: "auto" }}>💾 Save</button>
           <button onClick={() => setWorldMapOpen(true)} style={{ ...S.btn, padding: "6px 14px", fontSize: 17 }}>🗺️ Map</button>
         </div>
-        {saveMsg && (
-          <div style={{ textAlign: "center", fontSize: 15, fontWeight: 600, color: "#4ade80", padding: "4px 0" }}>{saveMsg}</div>
-        )}
 
         <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
           {/* Map */}
@@ -6198,6 +6218,8 @@ const heroUrl = "hero_sprite.png";
                 setEnemyStatus({ type: null, duration: 0, damagePerTurn: 0 });
                 setPlayerBuffs({ active: [] });
                 setEnemyBuffs({ active: [] });
+                setSkillsOpen(false);
+                setCombatItemsOpen(false);
                 
                 setEnemy(en);
                 setEnemyHp(en.hp);
@@ -6441,4 +6463,3 @@ export default function RPGGame() {
     </>
   );
 }
-
