@@ -1719,12 +1719,12 @@ function calcStats(attrs, equipment) {
   const int = (attrs.intelligence || 1) + bonusInt;
   const end = (attrs.endurance || 1) + bonusEnd;
   return {
-    maxHp: str * 5 + end * 8 + 20,
+    maxHp: str * 5 + end * 8 + int * 4 + 30,
     maxMana: int * 4 + 10,
     damage: str + Math.floor(dex / 2) + bonusDmg,
-    defense: Math.floor(str / 2) + Math.floor(dex / 2) + bonusDef,
-    dodgeChance: Math.min(0.40, dex * 0.015),
-    critChance: Math.min(0.35, dex * 0.012),
+    defense: Math.floor(str / 2) + Math.floor(dex / 2) + int * 0.5 + bonusDef,
+    dodgeChance: Math.min(0.50, dex * 0.015),
+    critChance: Math.min(0.50, dex * 0.012),
   };
 }
 
@@ -1814,8 +1814,8 @@ function HealthBar({ current, max, label, isMana, pulse }) {
 
 const STAT_TOOLTIPS = {
   strength: "+5 Max HP per point\n+1 Damage per point\n+0.5 Defense per point",
-  dexterity: "+0.5 Damage per point\n+0.5 Defense per point\n+1.5% Dodge per point (max 40%)\n+1.2% Crit per point (max 35%)",
-  intelligence: "+4 Max Mana per point",
+  dexterity: "+0.5 Damage per point\n+0.5 Defense per point\n+1.5% Dodge per point (max 50%)\n+1.2% Crit per point (max 50%)",
+  intelligence: "+4 Max Mana per point\n+4 Max HP per point\n+0.5 Defense per point",
   endurance: "+8 Max HP per point",
 };
 
@@ -2014,7 +2014,7 @@ function SpriteImage({ spriteKey, size = 80, spriteSheetUrl }) {
   return <canvas ref={canvasRef} width={size} height={size} style={{ width: size, height: size, imageRendering: "pixelated" }} />;
 }
 
-function EquipSlot({ slot, item, icon }) {
+function EquipSlot({ slot, item, icon, svgIcon }) {
   const [hovered, setHovered] = useState(false);
   return (
     <div
@@ -2029,7 +2029,7 @@ function EquipSlot({ slot, item, icon }) {
         cursor: "default", transition: "border-color 0.2s",
         ...(hovered && item ? { borderColor: item.rarityColor || "#d4af37" } : {}),
       }}>
-        <span style={{ fontSize: 32 }}>{icon}</span>
+        <span style={{ fontSize: 32 }}>{svgIcon ? svgIcon : icon}</span>
         <div style={{ fontSize: 13, opacity: 0.4, textTransform: "capitalize", marginTop: 3 }}>{slot}</div>
         <div style={{ fontSize: 13, fontWeight: item ? 600 : 400, opacity: item ? 0.9 : 0.25, textAlign: "center", lineHeight: "1.2", padding: "0 4px", maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: item ? (item.rarityColor || "#ccc") : undefined }}>
           {item ? item.name : "Empty"}
@@ -2362,6 +2362,291 @@ function SpecialButton({ special, hp, maxHp, onUse, disabled }) {
 // MAIN GAME
 // ============================================================
 
+function CastleSVG({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 170 230" fill="none" style={{ display: "inline-block", verticalAlign: "middle" }}>
+      <rect x="20" y="110" width="130" height="115" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1.2"/>
+      <line x1="20" y1="130" x2="150" y2="130" stroke="#2a2a4a" strokeWidth="0.8"/>
+      <line x1="20" y1="152" x2="150" y2="152" stroke="#2a2a4a" strokeWidth="0.8"/>
+      <line x1="20" y1="174" x2="150" y2="174" stroke="#2a2a4a" strokeWidth="0.8"/>
+      <rect x="10" y="85" width="38" height="140" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1.2"/>
+      <rect x="10" y="72" width="10" height="16" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1"/>
+      <rect x="24" y="72" width="10" height="16" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1"/>
+      <rect x="14" y="105" width="10" height="14" rx="5" fill="#0a0a14" stroke="#3a3a5a" strokeWidth="0.8"/>
+      <rect x="15" y="106" width="8" height="12" rx="4" fill="#d4af37" opacity="0.6"/>
+      <rect x="122" y="85" width="38" height="140" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1.2"/>
+      <rect x="126" y="72" width="10" height="16" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1"/>
+      <rect x="140" y="72" width="10" height="16" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1"/>
+      <rect x="146" y="105" width="10" height="14" rx="5" fill="#0a0a14" stroke="#3a3a5a" strokeWidth="0.8"/>
+      <rect x="58" y="55" width="54" height="170" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1.2"/>
+      <rect x="58" y="40" width="12" height="18" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1"/>
+      <rect x="76" y="40" width="12" height="18" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1"/>
+      <rect x="94" y="40" width="12" height="18" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1"/>
+      <rect x="73" y="78" width="24" height="28" rx="12" fill="#0a0a14" stroke="#3a3a5a" strokeWidth="0.8"/>
+      <rect x="74" y="79" width="22" height="26" rx="11" fill="#d4af37" opacity="0.6"/>
+      <rect x="73" y="118" width="24" height="28" rx="12" fill="#0a0a14" stroke="#3a3a5a" strokeWidth="0.8"/>
+      <rect x="73" y="168" width="24" height="57" fill="#080810"/>
+      <path d="M73,188 Q73,168 85,168 Q97,168 97,188" fill="#080810" stroke="#3a3a5a" strokeWidth="0.8"/>
+      <line x1="79" y1="170" x2="79" y2="225" stroke="#2a2a3a" strokeWidth="1"/>
+      <line x1="85" y1="170" x2="85" y2="225" stroke="#2a2a3a" strokeWidth="1"/>
+      <line x1="91" y1="170" x2="91" y2="225" stroke="#2a2a3a" strokeWidth="1"/>
+      <line x1="73" y1="190" x2="97" y2="190" stroke="#2a2a3a" strokeWidth="1"/>
+      <line x1="73" y1="208" x2="97" y2="208" stroke="#2a2a3a" strokeWidth="1"/>
+      <line x1="85" y1="5" x2="85" y2="42" stroke="#4a4a6a" strokeWidth="1.2"/>
+      <polygon points="85,5 85,22 100,13" fill="#8b1a1a"/>
+    </svg>
+  );
+}
+
+function CaveSVG({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 100 100" fill="none" style={{ display: "inline-block", verticalAlign: "middle" }}>
+      <ellipse cx="50" cy="72" rx="48" ry="28" fill="#1a1a2e" stroke="#4a4a6a" strokeWidth="1.2"/>
+      <ellipse cx="50" cy="65" rx="46" ry="34" fill="#1a1a2e" stroke="#4a4a6a" strokeWidth="1"/>
+      <ellipse cx="38" cy="55" rx="30" ry="26" fill="#1a1a2e" stroke="#4a4a6a" strokeWidth="0.8"/>
+      <ellipse cx="62" cy="52" rx="28" ry="24" fill="#1a1a2e" stroke="#4a4a6a" strokeWidth="0.8"/>
+      <ellipse cx="50" cy="76" rx="22" ry="16" fill="#080810"/>
+      <path d="M28,76 Q28,56 50,53 Q72,56 72,76" fill="#080810"/>
+      <ellipse cx="50" cy="78" rx="18" ry="12" fill="#030308"/>
+      <polygon points="36,56 39,70 42,56" fill="#141428"/>
+      <polygon points="46,53 49,68 52,53" fill="#141428"/>
+      <polygon points="56,54 59,69 62,54" fill="#141428"/>
+      <ellipse cx="50" cy="80" rx="12" ry="6" fill="#8b0000" opacity="0.3"/>
+      <line x1="10" y1="68" x2="20" y2="60" stroke="#2a2a4a" strokeWidth="0.8"/>
+      <line x1="76" y1="62" x2="88" y2="70" stroke="#2a2a4a" strokeWidth="0.8"/>
+    </svg>
+  );
+}
+
+function WeaponSVG({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" style={{ display:"inline-block", verticalAlign:"middle" }}>
+      <g transform="translate(32,32) rotate(-45)">
+        <path d="M0,-24 L3,-5 L0,0 L-3,-5 Z" fill="#c8d0dc" stroke="#8890a0" strokeWidth="0.8"/>
+        <path d="M0,-24 L0.8,-5 L0,0 L-0.8,-5 Z" fill="#e8ecf2"/>
+        <path d="M-8,-5 L-2,-6 L0,-5 L2,-6 L8,-5 L6,-3 L0,-4 L-6,-3 Z" fill="#d4af37" stroke="#a07a10" strokeWidth="0.6"/>
+        <rect x="-2" y="-3" width="4" height="10" rx="1" fill="#3a1a0a" stroke="#5a3a1a" strokeWidth="0.5"/>
+        <line x1="-2" y1="-1" x2="2" y2="-1" stroke="#8b6a3e" strokeWidth="0.8"/>
+        <line x1="-2" y1="2" x2="2" y2="2" stroke="#8b6a3e" strokeWidth="0.8"/>
+        <line x1="-2" y1="5" x2="2" y2="5" stroke="#8b6a3e" strokeWidth="0.8"/>
+        <ellipse cx="0" cy="9" rx="3.5" ry="2.5" fill="#d4af37" stroke="#a07a10" strokeWidth="0.8"/>
+      </g>
+    </svg>
+  );
+}
+
+function ShieldSVG({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" style={{ display:"inline-block", verticalAlign:"middle" }}>
+      <path d="M32 6 L54 16 L54 34 Q54 52 32 60 Q10 52 10 34 L10 16 Z" fill="#1a1a3e" stroke="#5a5a9a" strokeWidth="2"/>
+      <path d="M32 12 L48 20 L48 34 Q48 48 32 55 Q16 48 16 34 L16 20 Z" fill="#2a2a5a" stroke="#4a4a8a" strokeWidth="1"/>
+      <line x1="32" y1="14" x2="32" y2="54" stroke="#d4af37" strokeWidth="2"/>
+      <line x1="16" y1="30" x2="48" y2="30" stroke="#d4af37" strokeWidth="2"/>
+      <path d="M32 20 L35 28 L32 25 L29 28 Z" fill="#d4af37"/>
+    </svg>
+  );
+}
+
+function HelmSVG({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" style={{ display:"inline-block", verticalAlign:"middle" }}>
+      <path d="M16 38 Q16 14 32 10 Q48 14 48 38 L48 44 C48 48 16 48 16 44 Z" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1.5"/>
+      <rect x="20" y="28" width="24" height="5" rx="2" fill="#0a0a14"/>
+      <path d="M32 10 Q36 2 40 4 Q36 10 32 10Z" fill="#8b0000"/>
+      <path d="M32 10 Q38 4 44 6 Q40 12 36 14" fill="none" stroke="#8b0000" strokeWidth="2.5" strokeLinecap="round"/>
+      <line x1="16" y1="36" x2="48" y2="36" stroke="#d4af37" strokeWidth="0.8" opacity="0.6"/>
+      <rect x="22" y="44" width="20" height="5" rx="2" fill="#3a3a5a" stroke="#5a5a8a" strokeWidth="0.8"/>
+    </svg>
+  );
+}
+
+function ChestSVG({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" style={{ display:"inline-block", verticalAlign:"middle" }}>
+      <path d="M16 20 L8 28 L14 32 L14 56 L50 56 L50 32 L56 28 L48 20 L40 26 L32 22 L24 26 Z" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1.5"/>
+      <path d="M24 20 Q32 16 40 20 L36 28 L32 24 L28 28Z" fill="#1a1a2e" stroke="#4a4a6a" strokeWidth="1"/>
+      <line x1="32" y1="30" x2="32" y2="52" stroke="#d4af37" strokeWidth="1.2" opacity="0.7"/>
+      <line x1="20" y1="40" x2="44" y2="40" stroke="#d4af37" strokeWidth="1.2" opacity="0.7"/>
+      <path d="M14 32 L8 28 L12 48 L14 48Z" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1"/>
+      <path d="M50 32 L56 28 L52 48 L50 48Z" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1"/>
+    </svg>
+  );
+}
+
+function MerchantSVG({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" style={{ display:"inline-block", verticalAlign:"middle" }}>
+      <ellipse cx="32" cy="50" rx="20" ry="6" fill="#b8860b" stroke="#8a6008" strokeWidth="1"/>
+      <rect x="12" y="38" width="40" height="12" fill="#d4af37" stroke="#a07a10" strokeWidth="1"/>
+      <ellipse cx="32" cy="38" rx="20" ry="6" fill="#e8c840" stroke="#a07a10" strokeWidth="1"/>
+      <rect x="12" y="26" width="40" height="12" fill="#d4af37" stroke="#a07a10" strokeWidth="1"/>
+      <ellipse cx="32" cy="26" rx="20" ry="6" fill="#e8c840" stroke="#a07a10" strokeWidth="1"/>
+      <rect x="12" y="16" width="40" height="10" fill="#d4af37" stroke="#a07a10" strokeWidth="1"/>
+      <ellipse cx="32" cy="16" rx="20" ry="6" fill="#f0d050" stroke="#a07a10" strokeWidth="1.2"/>
+    </svg>
+  );
+}
+
+function BlacksmithSVG({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" style={{ display:"inline-block", verticalAlign:"middle" }}>
+      <rect x="28" y="8" width="26" height="14" rx="3" fill="#6b6b7a" stroke="#4a4a5a" strokeWidth="1.2"/>
+      <rect x="35" y="20" width="7" height="36" rx="3" fill="#8b6a3e" stroke="#6a4a20" strokeWidth="1"/>
+      <rect x="8" y="46" width="30" height="8" rx="2" fill="#3a3a4a" stroke="#5a5a6a" strokeWidth="1"/>
+      <rect x="12" y="38" width="22" height="10" rx="2" fill="#4a4a5a" stroke="#5a5a6a" strokeWidth="1"/>
+      <line x1="12" y1="36" x2="8" y2="28" stroke="#d4af37" strokeWidth="1.5" strokeLinecap="round"/>
+      <line x1="18" y1="34" x2="16" y2="24" stroke="#ef8844" strokeWidth="1.2" strokeLinecap="round"/>
+      <line x1="8" y1="30" x2="4" y2="24" stroke="#d4af37" strokeWidth="1" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
+function InnSVG({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" style={{ display:"inline-block", verticalAlign:"middle" }}>
+      <rect x="8" y="26" width="48" height="32" rx="2" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1.2"/>
+      <path d="M4 28 L32 8 L60 28 Z" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1.2"/>
+      <rect x="26" y="40" width="12" height="18" rx="6" fill="#080810"/>
+      <rect x="12" y="32" width="10" height="8" rx="2" fill="#d4af3766"/>
+      <rect x="42" y="32" width="10" height="8" rx="2" fill="#d4af3766"/>
+      <rect x="20" y="22" width="24" height="8" rx="2" fill="#8b6a3e" stroke="#6a4a20" strokeWidth="0.8"/>
+    </svg>
+  );
+}
+
+function BulletinSVG({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" style={{ display:"inline-block", verticalAlign:"middle" }}>
+      <rect x="8" y="10" width="48" height="44" rx="3" fill="#8b6a3e" stroke="#6a4a20" strokeWidth="1.5"/>
+      <rect x="10" y="12" width="44" height="40" rx="2" fill="#7a5a2e" stroke="#5a3a10" strokeWidth="0.8"/>
+      <rect x="14" y="16" width="16" height="12" rx="1" fill="#e8dcc8" stroke="#c8b898" strokeWidth="0.6"/>
+      <rect x="34" y="16" width="16" height="12" rx="1" fill="#e8dcc8" stroke="#c8b898" strokeWidth="0.6"/>
+      <rect x="14" y="32" width="36" height="10" rx="1" fill="#e0d4b8" stroke="#c8b898" strokeWidth="0.6"/>
+      <circle cx="22" cy="20" r="2" fill="#c04040"/>
+      <circle cx="42" cy="20" r="2" fill="#c04040"/>
+      <line x1="16" y1="44" x2="46" y2="44" stroke="#c8b898" strokeWidth="0.8"/>
+    </svg>
+  );
+}
+
+function LeaveSVG({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" style={{ display:"inline-block", verticalAlign:"middle" }}>
+      <rect x="10" y="8" width="36" height="50" rx="3" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1.5"/>
+      <rect x="14" y="12" width="28" height="42" rx="2" fill="#2a2a3e" stroke="#4a4a6a" strokeWidth="1"/>
+      <circle cx="36" cy="38" r="3" fill="#d4af37" stroke="#a07a10" strokeWidth="0.8"/>
+      <line x1="44" y1="32" x2="56" y2="32" stroke="#ef4444" strokeWidth="2.5" strokeLinecap="round"/>
+      <line x1="50" y1="26" x2="56" y2="32" stroke="#ef4444" strokeWidth="2.5" strokeLinecap="round"/>
+      <line x1="50" y1="38" x2="56" y2="32" stroke="#ef4444" strokeWidth="2.5" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
+function CampfireSVG({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" style={{ display:"inline-block", verticalAlign:"middle" }}>
+      <rect x="12" y="44" width="40" height="8" rx="4" fill="#6b3a1e" stroke="#4a2a10" strokeWidth="1"/>
+      <rect x="20" y="48" width="24" height="6" rx="3" fill="#8b4a2e" stroke="#6a3a18" strokeWidth="0.8"/>
+      <path d="M22,44 Q18,30 24,20 Q28,34 32,28 Q36,18 38,24 Q42,14 40,8 Q48,18 46,30 Q50,24 48,36 Q46,44 42,44Z" fill="#d45510" opacity="0.9"/>
+      <path d="M26,44 Q24,34 28,26 Q30,34 32,30 Q34,22 36,28 Q38,34 38,44Z" fill="#f4a020"/>
+      <path d="M29,44 Q28,38 32,32 Q36,38 35,44Z" fill="#fadd80"/>
+      <ellipse cx="32" cy="44" rx="14" ry="4" fill="#d45510" opacity="0.3"/>
+    </svg>
+  );
+}
+
+function BedSVG({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" style={{ display:"inline-block", verticalAlign:"middle" }}>
+      <rect x="6" y="30" width="52" height="24" rx="3" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1.2"/>
+      <rect x="10" y="26" width="18" height="12" rx="4" fill="#e8dcc8" stroke="#c8b898" strokeWidth="0.8"/>
+      <rect x="10" y="34" width="44" height="16" rx="2" fill="#3a3a6a" stroke="#5a5a9a" strokeWidth="0.8"/>
+      <rect x="6" y="20" width="10" height="36" rx="2" fill="#1a1a2e" stroke="#4a4a6a" strokeWidth="1"/>
+      <rect x="10" y="52" width="6" height="8" rx="1" fill="#1a1a2e"/>
+      <rect x="48" y="52" width="6" height="8" rx="1" fill="#1a1a2e"/>
+    </svg>
+  );
+}
+
+function ScrollSVG({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" style={{ display:"inline-block", verticalAlign:"middle" }}>
+      <rect x="14" y="6" width="36" height="52" rx="4" fill="#c8a870" stroke="#8a6a30" strokeWidth="1.5"/>
+      <ellipse cx="14" cy="32" rx="5" ry="26" fill="#b89050" stroke="#8a6a30" strokeWidth="1.2"/>
+      <ellipse cx="50" cy="32" rx="5" ry="26" fill="#b89050" stroke="#8a6a30" strokeWidth="1.2"/>
+      <line x1="22" y1="18" x2="42" y2="18" stroke="#6a4a10" strokeWidth="1.5" strokeLinecap="round"/>
+      <line x1="22" y1="26" x2="42" y2="26" stroke="#6a4a10" strokeWidth="1.5" strokeLinecap="round"/>
+      <line x1="22" y1="34" x2="36" y2="34" stroke="#6a4a10" strokeWidth="1.5" strokeLinecap="round"/>
+      <line x1="22" y1="42" x2="38" y2="42" stroke="#6a4a10" strokeWidth="1.5" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
+function MedalSVG({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" style={{ display:"inline-block", verticalAlign:"middle" }}>
+      <path d="M24 8 L32 18 L40 8 L44 16 L32 28 L20 16Z" fill="#4a4a9a" stroke="#3a3a7a" strokeWidth="1"/>
+      <line x1="28" y1="8" x2="32" y2="28" stroke="#6a6aaa" strokeWidth="1.5"/>
+      <line x1="36" y1="8" x2="32" y2="28" stroke="#6a6aaa" strokeWidth="1.5"/>
+      <circle cx="32" cy="44" r="16" fill="#d4af37" stroke="#a07a10" strokeWidth="2"/>
+      <circle cx="32" cy="44" r="12" fill="#e8c040" stroke="#c09020" strokeWidth="0.8"/>
+      <path d="M32 34 L34 41 L41 41 L35.5 45.5 L37.5 52 L32 48 L26.5 52 L28.5 45.5 L23 41 L30 41Z" fill="#a07a10"/>
+    </svg>
+  );
+}
+
+function KillSVG({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" style={{ display:"inline-block", verticalAlign:"middle" }}>
+      <path d="M32 8 L38 28 L32 32 L26 28 Z" fill="#b0b8c8" stroke="#8090a8" strokeWidth="1"/>
+      <circle cx="32" cy="8" r="3" fill="#c01818"/>
+      <rect x="24" y="30" width="16" height="5" rx="2" fill="#d4af37" stroke="#a07a10" strokeWidth="0.8"/>
+      <rect x="28" y="34" width="8" height="14" rx="3" fill="#6b3a1e" stroke="#4a2a10" strokeWidth="1"/>
+      <circle cx="32" cy="50" r="4" fill="#8b8b6a" stroke="#6a6a4a" strokeWidth="0.8"/>
+    </svg>
+  );
+}
+
+function DeliverSVG({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" style={{ display:"inline-block", verticalAlign:"middle" }}>
+      <rect x="8" y="18" width="48" height="34" rx="3" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1.2"/>
+      <path d="M8 18 L32 36 L56 18Z" fill="#2a2a4a" stroke="#5a5a8a" strokeWidth="1"/>
+      <circle cx="32" cy="34" r="6" fill="#8b0000" stroke="#6a0000" strokeWidth="0.8"/>
+      <text x="32" y="37" textAnchor="middle" fontSize="8" fill="#d4af37" fontWeight="700">✦</text>
+    </svg>
+  );
+}
+
+function GatherSVG({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" style={{ display:"inline-block", verticalAlign:"middle" }}>
+      <rect x="10" y="22" width="44" height="34" rx="3" fill="#8b6a3e" stroke="#6a4a20" strokeWidth="1.5"/>
+      <rect x="8" y="16" width="48" height="10" rx="2" fill="#9b7a4e" stroke="#6a4a20" strokeWidth="1.2"/>
+      <line x1="32" y1="22" x2="32" y2="56" stroke="#6a4a20" strokeWidth="1.2"/>
+      <line x1="10" y1="36" x2="54" y2="36" stroke="#6a4a20" strokeWidth="1"/>
+      <rect x="8" y="28" width="48" height="4" rx="1" fill="#4a4a5a" stroke="#3a3a4a" strokeWidth="0.5"/>
+      <rect x="8" y="44" width="48" height="4" rx="1" fill="#4a4a5a" stroke="#3a3a4a" strokeWidth="0.5"/>
+      <rect x="28" y="14" width="8" height="6" rx="1" fill="#d4af37" stroke="#a07a10" strokeWidth="0.8"/>
+    </svg>
+  );
+}
+
+function CrownSVG({ size = 24 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 80 60" fill="none" style={{ display:"inline-block", verticalAlign:"middle" }}>
+      <path d="M8 48 L8 22 L24 36 L40 8 L56 36 L72 22 L72 48 Z" fill="#d4af37" stroke="#a07a10" strokeWidth="2"/>
+      <rect x="8" y="46" width="64" height="10" rx="3" fill="#b8860b" stroke="#a07a10" strokeWidth="1.5"/>
+      <circle cx="40" cy="10" r="5" fill="#e8c040"/>
+      <circle cx="10" cy="24" r="4" fill="#e8c040"/>
+      <circle cx="70" cy="24" r="4" fill="#e8c040"/>
+      <circle cx="20" cy="50" r="3" fill="#ff4444"/>
+      <circle cx="40" cy="50" r="3" fill="#4488ff"/>
+      <circle cx="60" cy="50" r="3" fill="#44cc44"/>
+    </svg>
+  );
+}
+
 function Game({ playerData, onMainMenu }) {
   const isLoaded = !playerData.isNew && playerData.worldSeed != null;
   const playerName = playerData.name || playerData.playerName;
@@ -2408,6 +2693,8 @@ const SPRITE_MAP = {
 
 const spriteSheetUrl = "/monster_spritesheet.png";
 const heroUrl = "hero_sprite.png";
+
+
   const currentSlot = playerData.selectedSlot ?? 0;  // ✅ Get slot number
 
   const [worldSeed] = useState(() => isLoaded ? playerData.worldSeed : Math.floor(Math.random() * 99999));
@@ -2490,12 +2777,14 @@ const heroUrl = "hero_sprite.png";
   const [restType, setRestType] = useState("free");
   const [questLogOpen, setQuestLogOpen] = useState(false);
   const [worldMapOpen, setWorldMapOpen] = useState(false);
-  const [mapZoom, setMapZoom] = useState(2); // 0=full world, 1=half, 2=quarter, 3=close
-  const [mapCenter, setMapCenter] = useState(null); // null = follow player
+  const [mapZoom, setMapZoom] = useState(2);
+  const [mapCenter, setMapCenter] = useState(null);
+  const [mapTooltip, setMapTooltip] = useState(null); // { name, x, y } screen coords
   const [charWindowOpen, setCharWindowOpen] = useState(false);
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [saveMsg, setSaveMsg] = useState(null);
   const [combatItemsOpen, setCombatItemsOpen] = useState(false);
+  const [introPopup, setIntroPopup] = useState(null);
   const [levelUpMsg, setLevelUpMsg] = useState(null);
   const [deathPopup, setDeathPopup] = useState(null);
   const [floatingDamages, setFloatingDamages] = useState([]);
@@ -2564,7 +2853,8 @@ const heroUrl = "hero_sprite.png";
       setCurrentCity(firstCity);
       setLastCity(firstCity);
       setVisitedCities(prev => new Set([...prev, firstCity.name]));
-      addLog(`🏘️ Welcome to ${firstCity.name}!`);
+      addLog(`🏰 Welcome to ${firstCity.name}!`);
+      setIntroPopup(firstCity);
       setFirstSpawnDone(true);  // ✅ Mark as done so it never runs again!
     }
   }, [cities, isLoaded, firstSpawnDone, screen]);
@@ -2801,7 +3091,7 @@ const heroUrl = "hero_sprite.png";
       setLastCity(cities[cityKey]);
       setVisitedCities(prev => new Set([...prev, cities[cityKey].name]));  // ✅ Mark as visited
       setScreen("city");
-      addLog(`🏘️ Entered ${cities[cityKey].name}`);
+      addLog(`🏰 Entered ${cities[cityKey].name}`);
       return;
     }
 
@@ -4309,39 +4599,126 @@ const heroUrl = "hero_sprite.png";
               background: isValid ? (isCity ? "#d4af3744" : isCave ? "#ef444444" : BIOME_COLORS[tileBiome] + "88") : "#000",
               border: isPlayer ? "2px solid #d4af37" : isAdjacent ? "1px solid #d4af3744" : "1px solid #0a0e27",
               display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: isPlayer || isCity || isCave ? 18 : 13,
+              fontSize: isPlayer || isCave ? 18 : 13,
               cursor: isAdjacent && isValid ? "pointer" : "default",
               borderRadius: 2,
               position: "relative",
               transition: "background 0.15s",
+              overflow: "visible",
+              zIndex: isPlayer ? 10 : isCity ? 5 : isCave ? 5 : 1,
             }}
-            title={isValid ? `${tileBiome} (${tileDiff?.name})${isCave ? ` — 🕳️ ${caves[cityKey].bossName}` : ""}` : ""}
+            title={isValid ? `${isCity ? `🏰 ${cities[cityKey].name}\n` : ""}${isCave ? `🕳️ ${caves[cityKey].bossName} — Lv.${caves[cityKey].itemLevel}\n` : ""}${tileBiome} (${tileDiff?.name})` : ""}
           >
             {isPlayer ? (
-              <svg width="26" height="26" viewBox="0 0 48 48" fill="none">
-                {/* Helm */}
-                <path d="M16 14 C16 6, 32 6, 32 14 L32 20 C32 23, 16 23, 16 20 Z" fill="#9CA3AF" stroke="#6B7280" strokeWidth="1.2"/>
-                {/* Visor */}
-                <rect x="19" y="15" width="10" height="2.5" rx="1" fill="#1f2937"/>
-                {/* Helm crest */}
-                <path d="M24 4 L22.5 11 L25.5 11 Z" fill="#d4af37"/>
-                {/* Plume */}
-                <path d="M24 4 C28 1, 31 3, 30 7" stroke="#dc2626" strokeWidth="2" fill="none" strokeLinecap="round"/>
-                {/* Gorget */}
-                <rect x="19" y="22" width="10" height="3" rx="1" fill="#7B8390"/>
-                {/* Chest plate */}
-                <path d="M14 25 L34 25 L32 40 L16 40 Z" fill="#9CA3AF" stroke="#6B7280" strokeWidth="1.2"/>
-                {/* Chest cross */}
-                <line x1="24" y1="28" x2="24" y2="37" stroke="#d4af37" strokeWidth="1.5"/>
-                <line x1="20" y1="32" x2="28" y2="32" stroke="#d4af37" strokeWidth="1.5"/>
-                {/* Shoulders */}
-                <ellipse cx="13" cy="27" rx="4" ry="3" fill="#A1A8B4" stroke="#6B7280" strokeWidth="1"/>
-                <ellipse cx="35" cy="27" rx="4" ry="3" fill="#A1A8B4" stroke="#6B7280" strokeWidth="1"/>
+              <svg width={TILE_PX * 1.25} height={TILE_PX * 1.25} viewBox="0 0 90 110" fill="none" style={{overflow:"visible"}}>
+                {/* Cape */}
+                <path d="M38,55 Q22,72 24,105 L38,105 L38,52Z" fill="#8b0000" stroke="#6b0000" strokeWidth="0.8"/>
                 {/* Legs */}
-                <rect x="17" y="40" width="5" height="6" rx="1" fill="#7B8390" stroke="#6B7280" strokeWidth="0.8"/>
-                <rect x="26" y="40" width="5" height="6" rx="1" fill="#7B8390" stroke="#6B7280" strokeWidth="0.8"/>
+                <rect x="34" y="82" width="10" height="18" rx="2" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1"/>
+                <rect x="46" y="82" width="10" height="18" rx="2" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1"/>
+                {/* Boots */}
+                <rect x="32" y="94" width="13" height="8" rx="2" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1"/>
+                <rect x="45" y="94" width="13" height="8" rx="2" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1"/>
+                {/* Chest */}
+                <rect x="32" y="54" width="30" height="31" rx="3" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1.2"/>
+                <line x1="47" y1="58" x2="47" y2="82" stroke="#d4af37" strokeWidth="1"/>
+                <line x1="36" y1="68" x2="58" y2="68" stroke="#d4af37" strokeWidth="1"/>
+                {/* Shoulders */}
+                <ellipse cx="30" cy="57" rx="7" ry="5" fill="#3a3a5a" stroke="#6a6a9a" strokeWidth="1"/>
+                <ellipse cx="64" cy="57" rx="7" ry="5" fill="#3a3a5a" stroke="#6a6a9a" strokeWidth="1"/>
+                {/* Arms */}
+                <rect x="22" y="58" width="10" height="20" rx="2" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1"/>
+                <rect x="62" y="58" width="10" height="20" rx="2" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1"/>
+                {/* Sword */}
+                <line x1="69" y1="62" x2="86" y2="28" stroke="#b0b8c8" strokeWidth="2.5" strokeLinecap="round"/>
+                <line x1="64" y1="67" x2="75" y2="57" stroke="#d4af37" strokeWidth="3" strokeLinecap="round"/>
+                {/* Helmet */}
+                <path d="M33,54 Q33,28 47,25 Q61,28 61,54Z" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1.2"/>
+                <rect x="37" y="40" width="20" height="4" rx="2" fill="#0a0a14"/>
+                <path d="M47,25 Q51,12 57,6" fill="none" stroke="#8b0000" strokeWidth="2.5" strokeLinecap="round"/>
+                <path d="M33,54 Q33,28 47,25 Q61,28 61,54" fill="none" stroke="#d4af37" strokeWidth="0.8"/>
               </svg>
-            ) : isCity ? "🏘️" : isCave ? "🕳️" : isDefeatedCave ? "💀" : ""}
+            ) : isCity ? (
+              <svg width={TILE_PX * 1.5625} height={TILE_PX * 1.5625} viewBox="0 0 170 230" fill="none" style={{overflow:"visible", position:"absolute", top:"50%", left:"50%", transform:"translate(-50%,-50%)"}}>
+                {/* Base wall */}
+                <rect x="20" y="110" width="130" height="115" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1.2"/>
+                <line x1="20" y1="130" x2="150" y2="130" stroke="#2a2a4a" strokeWidth="0.8"/>
+                <line x1="20" y1="152" x2="150" y2="152" stroke="#2a2a4a" strokeWidth="0.8"/>
+                <line x1="20" y1="174" x2="150" y2="174" stroke="#2a2a4a" strokeWidth="0.8"/>
+                {/* Left tower */}
+                <rect x="10" y="85" width="38" height="140" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1.2"/>
+                <rect x="10" y="72" width="10" height="16" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1"/>
+                <rect x="24" y="72" width="10" height="16" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1"/>
+                <rect x="14" y="105" width="10" height="14" rx="5" fill="#0a0a14" stroke="#3a3a5a" strokeWidth="0.8"/>
+                <rect x="15" y="106" width="8" height="12" rx="4" fill="#d4af37" opacity="0.6"/>
+                {/* Right tower */}
+                <rect x="122" y="85" width="38" height="140" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1.2"/>
+                <rect x="126" y="72" width="10" height="16" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1"/>
+                <rect x="140" y="72" width="10" height="16" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1"/>
+                <rect x="146" y="105" width="10" height="14" rx="5" fill="#0a0a14" stroke="#3a3a5a" strokeWidth="0.8"/>
+                {/* Center tower */}
+                <rect x="58" y="55" width="54" height="170" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1.2"/>
+                <rect x="58" y="40" width="12" height="18" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1"/>
+                <rect x="76" y="40" width="12" height="18" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1"/>
+                <rect x="94" y="40" width="12" height="18" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1"/>
+                <rect x="73" y="78" width="24" height="28" rx="12" fill="#0a0a14" stroke="#3a3a5a" strokeWidth="0.8"/>
+                <rect x="74" y="79" width="22" height="26" rx="11" fill="#d4af37" opacity="0.6"/>
+                <rect x="73" y="118" width="24" height="28" rx="12" fill="#0a0a14" stroke="#3a3a5a" strokeWidth="0.8"/>
+                {/* Gate */}
+                <rect x="73" y="168" width="24" height="57" fill="#080810"/>
+                <path d="M73,188 Q73,168 85,168 Q97,168 97,188" fill="#080810" stroke="#3a3a5a" strokeWidth="0.8"/>
+                <line x1="79" y1="170" x2="79" y2="225" stroke="#2a2a3a" strokeWidth="1"/>
+                <line x1="85" y1="170" x2="85" y2="225" stroke="#2a2a3a" strokeWidth="1"/>
+                <line x1="91" y1="170" x2="91" y2="225" stroke="#2a2a3a" strokeWidth="1"/>
+                <line x1="73" y1="190" x2="97" y2="190" stroke="#2a2a3a" strokeWidth="1"/>
+                <line x1="73" y1="208" x2="97" y2="208" stroke="#2a2a3a" strokeWidth="1"/>
+                {/* Flag */}
+                <line x1="85" y1="5" x2="85" y2="42" stroke="#4a4a6a" strokeWidth="1.2"/>
+                <polygon points="85,5 85,22 100,13" fill="#8b1a1a"/>
+              </svg>
+            ) : isCave ? (
+              <svg width={TILE_PX * 1.5625} height={TILE_PX * 1.5625} viewBox="0 0 100 100" fill="none" style={{overflow:"visible", position:"absolute", top:"50%", left:"50%", transform:"translate(-50%,-50%)"}}>
+                {/* Rock mass layers */}
+                <ellipse cx="50" cy="72" rx="48" ry="28" fill="#1a1a2e" stroke="#4a4a6a" strokeWidth="1.2"/>
+                <ellipse cx="50" cy="65" rx="46" ry="34" fill="#1a1a2e" stroke="#4a4a6a" strokeWidth="1"/>
+                <ellipse cx="38" cy="55" rx="30" ry="26" fill="#1a1a2e" stroke="#4a4a6a" strokeWidth="0.8"/>
+                <ellipse cx="62" cy="52" rx="28" ry="24" fill="#1a1a2e" stroke="#4a4a6a" strokeWidth="0.8"/>
+                {/* Cave opening */}
+                <ellipse cx="50" cy="76" rx="22" ry="16" fill="#080810"/>
+                <path d="M28,76 Q28,56 50,53 Q72,56 72,76" fill="#080810"/>
+                <ellipse cx="50" cy="78" rx="18" ry="12" fill="#030308"/>
+                {/* Stalactites */}
+                <polygon points="36,56 39,70 42,56" fill="#141428"/>
+                <polygon points="46,53 49,68 52,53" fill="#141428"/>
+                <polygon points="56,54 59,69 62,54" fill="#141428"/>
+                {/* Eerie glow */}
+                <ellipse cx="50" cy="80" rx="12" ry="6" fill="#8b0000" opacity="0.3"/>
+                {/* Rock texture */}
+                <line x1="10" y1="68" x2="20" y2="60" stroke="#2a2a4a" strokeWidth="0.8"/>
+                <line x1="76" y1="62" x2="88" y2="70" stroke="#2a2a4a" strokeWidth="0.8"/>
+              </svg>
+            ) : isDefeatedCave ? (
+              <svg width={TILE_PX * 1.25} height={TILE_PX * 1.25} viewBox="0 0 80 100" fill="none" style={{overflow:"visible"}}>
+                {/* Skull dome */}
+                <ellipse cx="40" cy="42" rx="28" ry="26" fill="#c8c0a0" stroke="#a09080" strokeWidth="1"/>
+                {/* Jaw */}
+                <rect x="20" y="56" width="40" height="18" rx="3" fill="#c8c0a0" stroke="#a09080" strokeWidth="1"/>
+                {/* Teeth */}
+                <rect x="23" y="67" width="6" height="9" rx="1" fill="#0d0d1a"/>
+                <rect x="32" y="67" width="6" height="9" rx="1" fill="#0d0d1a"/>
+                <rect x="41" y="67" width="6" height="9" rx="1" fill="#0d0d1a"/>
+                <rect x="50" y="67" width="6" height="9" rx="1" fill="#0d0d1a"/>
+                {/* Eye sockets */}
+                <ellipse cx="30" cy="42" rx="9" ry="10" fill="#0d0d1a"/>
+                <ellipse cx="50" cy="42" rx="9" ry="10" fill="#0d0d1a"/>
+                {/* Nose */}
+                <path d="M36,56 L40,50 L44,56 Z" fill="#0d0d1a"/>
+                {/* Jaw line */}
+                <line x1="20" y1="65" x2="60" y2="65" stroke="#a09080" strokeWidth="0.8"/>
+                {/* Crack */}
+                <path d="M40,17 L37,28 L42,36 L38,46" fill="none" stroke="#a09080" strokeWidth="1.2"/>
+              </svg>
+            ) : ""}
           </div>
         );
       }
@@ -4458,7 +4835,7 @@ const heroUrl = "hero_sprite.png";
           borderRadius: 10, padding: 14, boxShadow: "0 4px 24px #000c",
         }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-            <h3 style={{ ...S.gold, margin: 0, fontSize: 21 }}>📜 Quest Log</h3>
+            <h3 style={{ ...S.gold, margin: 0, fontSize: 21, display:"flex", alignItems:"center", gap:8 }}><ScrollSVG size={28}/> Quest Log</h3>
             <button onClick={() => setQuestLogOpen(false)} style={{ background: "none", border: "none", color: "#e8d7c3", cursor: "pointer", fontSize: 21, padding: 0 }}>✕</button>
           </div>
           {activeQuests.length === 0 && (
@@ -4468,7 +4845,7 @@ const heroUrl = "hero_sprite.png";
             const progress = getQuestProgress(q);
             const target = q.questKind === "chunkBossHunt" ? q.targetBosses : q.targetCount;
             const complete = progress >= target;
-            const icon = q.questKind === "kill" ? "🗡️" : q.questKind === "deliver" ? "📬" : q.questKind === "chunkBossHunt" ? "⚔️" : "📦";
+            const icon = q.questKind === "kill" ? <KillSVG size={18}/> : q.questKind === "deliver" ? <DeliverSVG size={18}/> : q.questKind === "chunkBossHunt" ? <WeaponSVG size={18}/> : <GatherSVG size={18}/>;
             const pct = (progress / target) * 100;
             return (
               <div key={q.id} style={{ marginBottom: 10, padding: 8, background: complete ? "#4ade8009" : "#ffffff05", borderRadius: 6, border: `1px solid ${complete ? "#4ade8033" : "#d4af3722"}` }}>
@@ -4485,7 +4862,7 @@ const heroUrl = "hero_sprite.png";
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: 17, marginBottom: 6 }}>
                   <span style={{ opacity: 0.5 }}>📍 {q.questKind === "deliver" ? `→ ${q.targetCity} (${q.targetCityX}, ${q.targetCityY})` : `${q.originCity} (${q.originX}, ${q.originY})`}</span>
-                  <span style={S.gold}>💰 {q.goldReward}g  ✨ {q.xpReward} XP</span>
+                  <span style={S.gold}><MerchantSVG size={16}/> {q.goldReward}g  ✨ {q.xpReward} XP</span>
                 </div>
                 {complete && <div style={{ fontSize: 17, color: "#4ade80", fontWeight: 600, marginBottom: 6 }}>✅ Ready to turn in at {q.questKind === "deliver" ? `${q.targetCity} (${q.targetCityX}, ${q.targetCityY})` : `${q.originCity} (${q.originX}, ${q.originY})`}</div>}
                 {/* ✅ NEW: Abort Button */}
@@ -4599,7 +4976,7 @@ const heroUrl = "hero_sprite.png";
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 14, fontSize: 17 }}>
             <span>Level <strong style={S.gold}>{level}</strong></span>
             <span>XP <strong style={S.gold}>{xp}/{xpToLevel}</strong></span>
-            <span>💰 <strong style={S.gold}>{gold}</strong></span>
+            <span><MerchantSVG size={16}/> <strong style={S.gold}>{gold}</strong></span>
           </div>
 
           <div style={{ marginBottom: 16 }}>
@@ -4659,51 +5036,44 @@ const heroUrl = "hero_sprite.png";
             
             {/* Top: Head centered with divider line below */}
             <div style={{ display: "flex", justifyContent: "center", marginBottom: 16, paddingBottom: 16, borderBottom: "1px solid #ffffff22" }}>
-              <EquipSlot slot="head" item={equipment.head} icon="🎭" />
+              <EquipSlot slot="head" item={equipment.head} svgIcon={<HelmSVG size={64}/>} />
             </div>
             
             {/* Middle row: Weapon | Character | Shield */}
             <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 16 }}>
-              <EquipSlot slot="weapon" item={equipment.weapon} icon="⚔️" />
+              <EquipSlot slot="weapon" item={equipment.weapon} svgIcon={<WeaponSVG size={64}/>} />
               <div style={{
                 width: 105, height: 105, display: "flex", alignItems: "center", justifyContent: "center",
                 background: "radial-gradient(circle, #d4af3711 0%, transparent 70%)",
                 borderRadius: "50%", border: "2px solid #d4af3733",
               }}>
-                <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
-                  {/* Helm */}
-                  <path d="M22 18 C22 8, 42 8, 42 18 L42 28 C42 32, 22 32, 22 28 Z" fill="#8B8B8B" stroke="#666" strokeWidth="1.5"/>
-                  {/* Visor slit */}
-                  <rect x="26" y="20" width="12" height="3" rx="1" fill="#1a1a2e"/>
-                  {/* Helm crest */}
-                  <path d="M32 6 L30 14 L34 14 Z" fill="#d4af37"/>
-                  {/* Plume */}
-                  <path d="M32 6 C38 2, 42 4, 40 10" stroke="#ef4444" strokeWidth="2.5" fill="none" strokeLinecap="round"/>
-                  {/* Neck armor */}
-                  <rect x="26" y="30" width="12" height="4" rx="1" fill="#777"/>
-                  {/* Chest plate */}
-                  <path d="M20 34 L44 34 L42 52 L22 52 Z" fill="#8B8B8B" stroke="#666" strokeWidth="1.5"/>
-                  {/* Chest emblem */}
-                  <path d="M32 38 L29 44 L32 42 L35 44 Z" fill="#d4af37"/>
-                  {/* Shoulder left */}
-                  <ellipse cx="19" cy="36" rx="5" ry="4" fill="#999" stroke="#666" strokeWidth="1"/>
-                  {/* Shoulder right */}
-                  <ellipse cx="45" cy="36" rx="5" ry="4" fill="#999" stroke="#666" strokeWidth="1"/>
-                  {/* Sword left - pointing up */}
-                  <line x1="12" y1="38" x2="12" y2="10" stroke="#aaa" strokeWidth="2" strokeLinecap="round"/>
-                  <line x1="8" y1="34" x2="16" y2="34" stroke="#d4af37" strokeWidth="2" strokeLinecap="round"/>
-                  {/* Shield right */}
-                  <path d="M50 32 L56 32 L56 46 L53 50 L50 46 Z" fill="#4169E1" stroke="#2a4a9e" strokeWidth="1.5"/>
-                  <path d="M53 35 L53 46" stroke="#d4af37" strokeWidth="1"/>
-                  <path d="M50 38 L56 38" stroke="#d4af37" strokeWidth="1"/>
+                <svg width="96" height="96" viewBox="0 0 90 110" fill="none" style={{overflow:"visible"}}>
+                  <path d="M38,55 Q22,72 24,105 L38,105 L38,52Z" fill="#8b0000" stroke="#6b0000" strokeWidth="0.8"/>
+                  <rect x="34" y="82" width="10" height="18" rx="2" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1"/>
+                  <rect x="46" y="82" width="10" height="18" rx="2" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1"/>
+                  <rect x="32" y="94" width="13" height="8" rx="2" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1"/>
+                  <rect x="45" y="94" width="13" height="8" rx="2" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1"/>
+                  <rect x="32" y="54" width="30" height="31" rx="3" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1.2"/>
+                  <line x1="47" y1="58" x2="47" y2="82" stroke="#d4af37" strokeWidth="1"/>
+                  <line x1="36" y1="68" x2="58" y2="68" stroke="#d4af37" strokeWidth="1"/>
+                  <ellipse cx="30" cy="57" rx="7" ry="5" fill="#3a3a5a" stroke="#6a6a9a" strokeWidth="1"/>
+                  <ellipse cx="64" cy="57" rx="7" ry="5" fill="#3a3a5a" stroke="#6a6a9a" strokeWidth="1"/>
+                  <rect x="22" y="58" width="10" height="20" rx="2" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1"/>
+                  <rect x="62" y="58" width="10" height="20" rx="2" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1"/>
+                  <line x1="69" y1="62" x2="86" y2="28" stroke="#b0b8c8" strokeWidth="2.5" strokeLinecap="round"/>
+                  <line x1="64" y1="67" x2="75" y2="57" stroke="#d4af37" strokeWidth="3" strokeLinecap="round"/>
+                  <path d="M33,54 Q33,28 47,25 Q61,28 61,54Z" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1.2"/>
+                  <rect x="37" y="40" width="20" height="4" rx="2" fill="#0a0a14"/>
+                  <path d="M47,25 Q51,12 57,6" fill="none" stroke="#8b0000" strokeWidth="2.5" strokeLinecap="round"/>
+                  <path d="M33,54 Q33,28 47,25 Q61,28 61,54" fill="none" stroke="#d4af37" strokeWidth="0.8"/>
                 </svg>
               </div>
-              <EquipSlot slot="shield" item={equipment.shield} icon="🛡️" />
+              <EquipSlot slot="shield" item={equipment.shield} svgIcon={<ShieldSVG size={64}/>} />
             </div>
             
             {/* Bottom: Chest centered with divider line above */}
             <div style={{ display: "flex", justifyContent: "center", paddingTop: 16, borderTop: "1px solid #ffffff22" }}>
-              <EquipSlot slot="chest" item={equipment.chest} icon="👕" />
+              <EquipSlot slot="chest" item={equipment.chest} svgIcon={<ChestSVG size={64}/>} />
             </div>
             
             {/* Stats row */}
@@ -5061,7 +5431,7 @@ const heroUrl = "hero_sprite.png";
         padding: 16, boxShadow: "0 8px 32px #000c", maxWidth: "95vw", maxHeight: "90vh", overflow: "auto",
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-          <h3 style={{ ...S.gold, margin: 0, fontSize: 21 }}>🗺️ World Map</h3>
+          <h3 style={{ ...S.gold, margin: 0, fontSize: 21, display:"flex", alignItems:"center", gap:8 }}><CastleSVG size={28}/> World Map</h3>
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
             <button onClick={() => { setMapCenter(null); }} style={{ ...S.btn, padding: "4px 10px", fontSize: 14 }}>📍 Player</button>
             <button onClick={() => setMapZoom(z => Math.min(3, z + 1))} style={{ ...S.btn, padding: "4px 10px", fontSize: 18 }} disabled={mapZoom >= 3}>🔍+</button>
@@ -5070,7 +5440,40 @@ const heroUrl = "hero_sprite.png";
             <button onClick={() => { setWorldMapOpen(false); setMapCenter(null); }} style={{ background: "none", border: "none", color: "#e8d7c3", cursor: "pointer", fontSize: 28, padding: 0, marginLeft: 8 }}>✕</button>
           </div>
         </div>
-        <div style={{ display: "flex", justifyContent: "center" }}
+        <div style={{ display: "flex", justifyContent: "center", position: "relative" }}
+          onMouseLeave={() => setMapTooltip(null)}
+          onMouseMove={e => {
+            const rect = bigMapCanvasRef.current?.getBoundingClientRect();
+            if (!rect) return;
+            const zoom = MAP_ZOOM_LEVELS[mapZoom];
+            const center = mapCenter || pos;
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+            const tileX = Math.round(center.x + (mx / zoom.px) - zoom.radius);
+            const tileY = Math.round(center.y + (my / zoom.px) - zoom.radius);
+            const searchR = zoom.px <= 1 ? 6 : zoom.px <= 3 ? 4 : zoom.px <= 6 ? 2 : 1;
+            let closest = null;
+            let closestDist = Infinity;
+            for (let dy = -searchR; dy <= searchR; dy++) {
+              for (let dx = -searchR; dx <= searchR; dx++) {
+                const ck = `${tileX + dx},${tileY + dy}`;
+                const dist = dx * dx + dy * dy;
+                if (cities[ck] && dist < closestDist) {
+                  closestDist = dist;
+                  closest = { type: "city", name: cities[ck].name };
+                }
+                if (caves[ck] && dist < closestDist) {
+                  closestDist = dist;
+                  closest = { type: "cave", name: caves[ck].bossName, level: caves[ck].itemLevel };
+                }
+              }
+            }
+            if (closest) {
+              setMapTooltip({ ...closest, x: e.clientX, y: e.clientY });
+            } else {
+              setMapTooltip(null);
+            }
+          }}
           onWheel={e => {
             e.preventDefault();
             const zoomIn = e.deltaY < 0;
@@ -5098,6 +5501,20 @@ const heroUrl = "hero_sprite.png";
         >
           <canvas ref={bigMapCanvasRef} style={{ borderRadius: 6, border: "1px solid #d4af3733", imageRendering: "pixelated" }} />
         </div>
+        {mapTooltip && (
+          <div style={{
+            position: "fixed", left: mapTooltip.x + 12, top: mapTooltip.y - 10,
+            background: "rgba(5,8,25,0.95)", border: `1px solid ${mapTooltip.type === "cave" ? "#ef4444" : "#d4af37"}`,
+            borderRadius: 6, padding: "4px 10px", fontSize: 14, fontWeight: 600,
+            color: mapTooltip.type === "cave" ? "#ef4444" : "#d4af37",
+            pointerEvents: "none", zIndex: 9999,
+            boxShadow: "0 2px 8px #000a",
+          }}>
+            {mapTooltip.type === "cave"
+              ? `🕳️ ${mapTooltip.name} — Lv.${mapTooltip.level}`
+              : `🏰 ${mapTooltip.name}`}
+          </div>
+        )}
         <div style={{ display: "flex", gap: 16, justifyContent: "center", marginTop: 10, fontSize: 15, opacity: 0.7, flexWrap: "wrap" }}>
           <span>🔴 You</span>
           <span style={{ color: "#d4af37" }}>■ City</span>
@@ -5235,6 +5652,37 @@ const heroUrl = "hero_sprite.png";
           surrounds you!</span><br/><br/>
           <span style={{ color: "#4ade80", fontSize: 18, fontWeight: 700 }}>💪 "I can feel its power!"</span>
         </div>
+      </div>
+    </div>
+  );
+
+  const introPopupOverlay = introPopup && (
+    <div style={{
+      position: "fixed", inset: 0, background: "rgba(0,0,0,0.92)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 3000, overflowY: "auto", padding: "20px 0",
+    }}>
+      <div style={{
+        ...S.panel, maxWidth: 580, width: "92%", textAlign: "center",
+        border: "2px solid #d4af37", boxShadow: "0 0 60px #d4af3755",
+      }}>
+        <div style={{ fontSize: 52, marginBottom: 10 }}>⚔️</div>
+        <h2 style={{ color: "#d4af37", margin: "0 0 20px 0", fontSize: 28, letterSpacing: 2 }}>Realm of Shadows</h2>
+        <div style={{ fontSize: 21, opacity: 0.9, lineHeight: 2, marginBottom: 28, fontStyle: "italic", textAlign: "left" }}>
+          <p style={{ marginTop: 0 }}>The cold mud presses against your cheek. You open your eyes.</p>
+          <p>The last thing you remember—a cave <CaveSVG size={28} />. Darkness that moved. Claws. The screaming of Monsters. The Realm of Shadows.</p>
+          <p>It's gone for now. You are alive only because something chose to leave you that way — and you do not know if that is mercy or cruelty.</p>
+          <p>You are a sellsword without a sword worth selling. The caves <CaveSVG size={28} /> bleed their filth into this world without end — monsters pouring forth like a wound that will not close. You have watched the darkness take everything from everyone.</p>
+          <p>You swore you would seal every last one of them.</p>
+          <p>That oath still stands. But oaths do not buy steel.</p>
+          <p>Ahead, through the morning fog, torchlight flickers on a city wall. Someone survived the night. Someone always does.</p>
+          <p>Get up. Find work. Get paid. Get back in the fight.</p>
+          <p style={{ marginBottom: 0, fontWeight: 700, fontSize: 24, fontStyle: "normal" }}>The caves <CaveSVG size={32} /> are still out there. And they are still bleeding.</p>
+        </div>
+        <button
+          onClick={() => { setIntroPopup(null); setScreen("city"); }}
+          style={{ ...S.btn, ...S.btnSuccess, padding: "12px 32px", fontSize: 20 }}
+        >
+          <CastleSVG size={22} /> Enter {introPopup.name}
+        </button>
       </div>
     </div>
   );
@@ -5645,7 +6093,7 @@ const heroUrl = "hero_sprite.png";
           {/* ✅ Scrollable content area */}
           <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
             <div style={{ ...S.panel, textAlign: "center" }}>
-              <h2 style={{ ...S.gold, margin: "0 0 4px 0", fontSize: 26 }}>🏘️ {currentCity.name}</h2>
+              <h2 style={{ ...S.gold, margin: "0 0 4px 0", fontSize: 26, display: "flex", alignItems: "center", gap: 8 }}><CastleSVG size={112} /> {currentCity.name}</h2>
               <span style={S.badge(TIER_COLORS[currentCity.difficulty] || "#d4af37")}>{currentCity.difficulty}</span>
             </div>
 
@@ -5656,7 +6104,7 @@ const heroUrl = "hero_sprite.png";
                   const progress = getQuestProgress(q);
                   const target = q.questKind === "chunkBossHunt" ? q.targetBosses : q.targetCount;
                   const complete = progress >= target;
-                  const icon = q.questKind === "kill" ? "🗡️" : q.questKind === "deliver" ? "📬" : q.questKind === "chunkBossHunt" ? "⚔️" : "📦";
+                  const icon = q.questKind === "kill" ? <KillSVG size={18}/> : q.questKind === "deliver" ? <DeliverSVG size={18}/> : q.questKind === "chunkBossHunt" ? <WeaponSVG size={18}/> : <GatherSVG size={18}/>;
                   return (
                     <div key={q.id} style={{ fontSize: 21, padding: "6px 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <span>{icon} {q.title} ({progress}/{target})</span>
@@ -5670,18 +6118,18 @@ const heroUrl = "hero_sprite.png";
             )}
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 8, padding: "0 12px" }}>
-              <button onClick={() => setScreen("merchant")} style={S.btn}>🛒 Merchant</button>
-              <button onClick={() => setScreen("blacksmith")} style={S.btn}>🔨 Blacksmith</button>
-              <button onClick={() => setScreen("inn")} style={S.btn}>🏨 Inn</button>
+              <button onClick={() => setScreen("merchant")} style={{ ...S.btn, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}><MerchantSVG size={36}/> Merchant</button>
+              <button onClick={() => setScreen("blacksmith")} style={{ ...S.btn, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}><BlacksmithSVG size={36}/> Blacksmith</button>
+              <button onClick={() => setScreen("inn")} style={{ ...S.btn, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}><InnSVG size={36}/> Inn</button>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 20, padding: "0 12px" }}>
-              <button onClick={() => setScreen("questgiver")} style={S.btn}>⚔️ Questgiver</button>
-              <button onClick={() => setScreen("bulletin")} style={S.btn}>📋 Bulletin Board</button>
+              <button onClick={() => setScreen("questgiver")} style={{ ...S.btn, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}><WeaponSVG size={36}/> Questgiver</button>
+              <button onClick={() => setScreen("bulletin")} style={{ ...S.btn, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}><BulletinSVG size={36}/> Bulletin Board</button>
             </div>
-            
+
             {/* ✅ Leave City Button - im Content Flow */}
             <div style={{ padding: "0 12px", marginBottom: 20 }}>
-              <button onClick={() => { setScreen("world"); setCurrentCity(null); addLog(`Left ${currentCity.name}`); }} style={{ ...S.btn, ...S.btnDanger, width: "100%" }}>🚪 Leave City</button>
+              <button onClick={() => { setScreen("world"); setCurrentCity(null); addLog(`Left ${currentCity.name}`); }} style={{ ...S.btn, ...S.btnDanger, width: "100%", display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}><LeaveSVG size={36}/> Leave City</button>
             </div>
           </div>
         </div>
@@ -5704,14 +6152,14 @@ const heroUrl = "hero_sprite.png";
         <div style={{ maxWidth: 560, width: "100%" }}>
           <PlayerHeader {...{ playerName, level, xp, xpToLevel, gold, hp, mana, stats }} />
           <div style={S.panel}>
-            <h2 style={{ ...S.gold, margin: "0 0 14px 0", fontSize: 28 }}>🏨 Inn</h2>
+            <h2 style={{ ...S.gold, margin: "0 0 14px 0", fontSize: 28, display:"flex", alignItems:"center", gap:10 }}><InnSVG size={64}/> Inn</h2>
             <div style={{ fontSize: 16, opacity: 0.6, marginBottom: 14 }}>
               Welcome, weary traveler. Rest and recover your strength.
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <div style={{ background: "#ffffff06", borderRadius: 8, padding: 14, border: "1px solid #d4af3722" }}>
-                <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 6 }}>🔥 Campfire</div>
+                <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 6, display:"flex", alignItems:"center", gap:6 }}><CampfireSVG size={28}/> Campfire</div>
                 <div style={{ fontSize: 14, opacity: 0.6, marginBottom: 4 }}>Rest on the floor for free</div>
                 <div style={{ fontSize: 14, color: "#4ade80", marginBottom: 8 }}>+1 HP/s • +1 Mana/s</div>
                 <button
@@ -5722,7 +6170,7 @@ const heroUrl = "hero_sprite.png";
               </div>
 
               <div style={{ background: "#d4af3708", borderRadius: 8, padding: 14, border: "1px solid #d4af3733" }}>
-                <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 6, color: "#d4af37" }}>🛏️ Warm Bed</div>
+                <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 6, color: "#d4af37", display:"flex", alignItems:"center", gap:6 }}><BedSVG size={28}/> Warm Bed</div>
                 <div style={{ fontSize: 14, opacity: 0.6, marginBottom: 4 }}>A comfortable room with meals</div>
                 <div style={{ fontSize: 14, color: "#4ade80", marginBottom: 2 }}>+{innHealPerTick} HP/s ({Math.round(innRate * 100)}% max HP)</div>
                 <div style={{ fontSize: 14, color: "#d4af37", marginBottom: 2 }}>{innCostPerTick}g per second</div>
@@ -5753,7 +6201,7 @@ const heroUrl = "hero_sprite.png";
           <PlayerHeader {...{ playerName, level, xp, xpToLevel, gold, hp, mana, stats }} />
           <div style={{ ...S.panel, textAlign: "center" }}>
             <h2 style={{ ...S.gold, margin: "0 0 12px 0" }}>
-              {restType === "paid" ? "🛏️ Resting at the Inn" : "🔥 Resting by the Campfire"}
+              {restType === "paid" ? <><BedSVG size={28}/> Resting at the Inn</> : <><CampfireSVG size={28}/> Resting by the Campfire</>}
             </h2>
             <HealthBar current={hp} max={stats.maxHp} label="HP" />
             <HealthBar current={mana} max={stats.maxMana} label="Mana" isMana />
@@ -5796,7 +6244,7 @@ const heroUrl = "hero_sprite.png";
         <div style={{ maxWidth: 560, width: "100%" }}>
           <PlayerHeader {...{ playerName, level, xp, xpToLevel, gold, hp, mana, stats }} />
           <div style={S.panel}>
-            <h2 style={{ ...S.gold, margin: "0 0 12px 0", fontSize: 28 }}>🛒 Merchant</h2>
+            <h2 style={{ ...S.gold, margin: "0 0 12px 0", fontSize: 28, display:"flex", alignItems:"center", gap:10 }}><MerchantSVG size={64}/> Merchant</h2>
             {items.map((item, i) => {
               const owned = inventory.filter(inv => inv.name === item.name).length;
               return (
@@ -5847,7 +6295,7 @@ const heroUrl = "hero_sprite.png";
         <div style={{ maxWidth: 560, width: "100%" }}>
           <PlayerHeader {...{ playerName, level, xp, xpToLevel, gold, hp, mana, stats }} />
           <div style={S.panel}>
-            <h2 style={{ ...S.gold, margin: "0 0 12px 0", fontSize: 28 }}>🔨 Blacksmith</h2>
+            <h2 style={{ ...S.gold, margin: "0 0 12px 0", fontSize: 28, display:"flex", alignItems:"center", gap:10 }}><BlacksmithSVG size={64}/> Blacksmith</h2>
             {visibleItems.map((item, i) => {
               const statEntries = item.bonusStats ? Object.entries(item.bonusStats) : [];
               return (
@@ -5911,7 +6359,7 @@ const heroUrl = "hero_sprite.png";
         <div style={{ maxWidth: 560, width: "100%" }}>
           <PlayerHeader {...{ playerName, level, xp, xpToLevel, gold, hp, mana, stats }} />
           <div style={S.panel}>
-            <h2 style={{ ...S.gold, margin: "0 0 12px 0", fontSize: 28 }}>⚔️ Questgiver</h2>
+            <h2 style={{ ...S.gold, margin: "0 0 12px 0", fontSize: 28, display:"flex", alignItems:"center", gap:10 }}><WeaponSVG size={64}/> Questgiver</h2>
 
             {turnInableQuests.length > 0 && (
               <div style={{ marginBottom: 12, padding: 8, background: "#4ade8011", borderRadius: 6, border: "1px solid #4ade8033" }}>
@@ -5930,7 +6378,7 @@ const heroUrl = "hero_sprite.png";
 
             {allDone && (
               <div style={{ textAlign: "center", padding: "20px 12px" }}>
-                <div style={{ fontSize: 36, marginBottom: 10 }}>🎖️</div>
+                <div style={{ display:"flex", justifyContent:"center", marginBottom: 10 }}><MedalSVG size={48}/></div>
                 <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>"You have completed all my quests, brave warrior!"</div>
                 <div style={{ fontSize: 16, opacity: 0.6 }}>"There is nothing more I can offer you here. Continue your journey and seek new challenges in distant lands."</div>
               </div>
@@ -5942,7 +6390,7 @@ const heroUrl = "hero_sprite.png";
                 {pendingQuests.map(q => {
                   const progress = getQuestProgress(q);
                   const target = q.questKind === "chunkBossHunt" ? q.targetBosses : q.targetCount;
-                  const kindIcon = q.questKind === "kill" ? "🗡️" : q.questKind === "deliver" ? "📬" : q.questKind === "chunkBossHunt" ? "⚔️" : "📦";
+                  const kindIcon = q.questKind === "kill" ? <KillSVG size={18}/> : q.questKind === "deliver" ? <DeliverSVG size={18}/> : q.questKind === "chunkBossHunt" ? <WeaponSVG size={18}/> : <GatherSVG size={18}/>;
                   return (
                     <div key={q.id} style={{ fontSize: 15, padding: "4px 0", opacity: 0.7 }}>
                       {kindIcon} {q.title} — {progress}/{target}
@@ -5963,7 +6411,7 @@ const heroUrl = "hero_sprite.png";
                 boxShadow: "0 0 16px #ef444433"  // ✅ Glow effect
               }}>
                 <div style={{ fontSize: 20, fontWeight: 800, color: "#ff6b6b", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
-                  👑 MAIN QUESTS 👑  {/* ✅ Main Quest label */}
+                  <CrownSVG size={20}/> MAIN QUESTS <CrownSVG size={20}/>  {/* ✅ Main Quest label */}
                 </div>
                 {availableQuests.filter(q => q.questKind === "chunkBossHunt").map((q) => {
                   const kindIcon = "⚔️";
@@ -6014,7 +6462,7 @@ const heroUrl = "hero_sprite.png";
               <div>
                 <div style={{ fontSize: 16, fontWeight: 600, color: "#d4af37", marginBottom: 8, marginTop: 8 }}>Other Quests</div>
                 {availableQuests.filter(q => q.questKind !== "chunkBossHunt").map((q) => {
-                  const kindIcon = q.questKind === "kill" ? "🗡️" : q.questKind === "deliver" ? "📬" : "📦";
+                  const kindIcon = q.questKind === "kill" ? <KillSVG size={18}/> : q.questKind === "deliver" ? <DeliverSVG size={18}/> : <GatherSVG size={18}/>;
                   return (
                     <div key={q.id} style={{ padding: "10px 0", borderBottom: "1px solid #d4af3711" }}>
                       <div style={{ fontWeight: 600, fontSize: 21 }}>{kindIcon} {q.title}</div>
@@ -6046,7 +6494,7 @@ const heroUrl = "hero_sprite.png";
         <div style={{ maxWidth: 560, width: "100%" }}>
           <PlayerHeader {...{ playerName, level, xp, xpToLevel, gold, hp, mana, stats }} />
           <div style={S.panel}>
-            <h2 style={{ ...S.gold, margin: "0 0 12px 0", fontSize: 28 }}>📋 Bulletin Board</h2>
+            <h2 style={{ ...S.gold, margin: "0 0 12px 0", fontSize: 28, display:"flex", alignItems:"center", gap:10 }}><BulletinSVG size={64}/> Bulletin Board</h2>
 
             {turnInableQuests.length > 0 && (
               <div style={{ marginBottom: 12, padding: 8, background: "#4ade8011", borderRadius: 6, border: "1px solid #4ade8033" }}>
@@ -6070,7 +6518,7 @@ const heroUrl = "hero_sprite.png";
               // ✅ Zeige Quest nur wenn NICHT aktiv
               if (alreadyActive) return null;
               
-              const kindIcon = q.questKind === "kill" ? "🗡️" : q.questKind === "deliver" ? "📬" : "📦";
+              const kindIcon = q.questKind === "kill" ? <KillSVG size={18}/> : q.questKind === "deliver" ? <DeliverSVG size={18}/> : <GatherSVG size={18}/>;
               return (
                 <div key={q.id} style={{ padding: "10px 0", borderBottom: "1px solid #d4af3711" }}>
                   <div style={{ fontWeight: 600, fontSize: 21 }}>{kindIcon} {q.title}</div>
@@ -6093,6 +6541,7 @@ const heroUrl = "hero_sprite.png";
       {questLogOverlay}
         {levelUpPopup}
         {abilityChoicePopupElement}
+        {introPopupOverlay}
         {deathPopupOverlay}
         {worldMapOverlay}
       <div style={{ maxWidth: 1000, width: "100%" }}>
@@ -6110,8 +6559,8 @@ const heroUrl = "hero_sprite.png";
               setCurrentCity(city);
               setLastCity(city);
               setScreen("city");
-              addLog(`🏘️ Entered ${city.name}`);
-            }} style={{ ...S.btn, ...S.btnSuccess, padding: "6px 14px", fontSize: 17 }}>🏘️ Enter {cities[`${pos.x},${pos.y}`].name}</button>
+              addLog(`🏰 Entered ${city.name}`);
+            }} style={{ ...S.btn, ...S.btnSuccess, padding: "6px 14px", fontSize: 17, display: "flex", alignItems: "center", gap: 6 }}><CastleSVG size={20} /> Enter {cities[`${pos.x},${pos.y}`].name}</button>
           )}
           <button onClick={() => setWorldMapOpen(true)} style={{ ...S.btn, padding: "6px 14px", fontSize: 17 }}>🗺️ Map</button>
         </div>
@@ -6119,7 +6568,7 @@ const heroUrl = "hero_sprite.png";
         <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
           {/* Map */}
           <div style={{ ...S.panel, padding: 4, display: "flex", justifyContent: "center", flexShrink: 0, marginBottom: 0 }}>
-            <div style={{ display: "grid", gridTemplateColumns: `repeat(${VIEW_SIZE}, ${TILE_PX}px)`, gap: 1 }}>
+            <div style={{ display: "grid", gridTemplateColumns: `repeat(${VIEW_SIZE}, ${TILE_PX}px)`, gap: 1, overflow: "visible" }}>
               {renderMap()}
             </div>
           </div>
@@ -6149,7 +6598,7 @@ const heroUrl = "hero_sprite.png";
           position: "fixed", inset: 0, background: "rgba(0,0,0,0.8)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000,
         }}>
           <div style={{ ...S.panel, maxWidth: 440, width: "90%", textAlign: "center" }}>
-            <div style={{ fontSize: 48, marginBottom: 8 }}>🕳️</div>
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}><CaveSVG size={64} /></div>
             <h2 style={{ ...S.gold, margin: "0 0 8px 0", fontSize: 24 }}>A Dark Cave</h2>
             <div style={{ fontSize: 17, opacity: 0.7, marginBottom: 6 }}>
               You discover a cave entrance. From within, you sense a powerful presence...
@@ -6267,7 +6716,7 @@ function PlayerHeader({ playerName, level, xp, xpToLevel, gold, hp, mana, stats 
           <span style={{ fontSize: 21, opacity: 0.6, marginLeft: 8 }}>Lv.{level}</span>
         </div>
         <div style={{ display: "flex", gap: 12, fontSize: 17 }}>
-          <span style={S.gold}>💰 {gold}</span>
+          <span style={{...S.gold, display:"flex", alignItems:"center", gap:4}}><MerchantSVG size={16}/> {gold}</span>
           <span style={{ opacity: 0.6 }}>⚔️ {stats.damage}</span>
           <span style={{ opacity: 0.6 }}>🛡️ {stats.defense}</span>
         </div>
@@ -6411,7 +6860,7 @@ export default function RPGGame() {
                         <div style={{ display: "flex", gap: 16, fontSize: 14, opacity: 0.8, flexWrap: "wrap", marginBottom: 8 }}>
                           <span>⚔️ {save.data.playerName}</span>
                           <span>Level {save.data.level}</span>
-                          <span>💰 {save.data.gold}g</span>
+                          <span style={{display:"flex",alignItems:"center",gap:4}}><MerchantSVG size={14}/> {save.data.gold}g</span>
                           <span>📍 ({save.data.pos?.x}, {save.data.pos?.y})</span>
                           <span style={{ opacity: 0.6, fontSize: 12 }}>🕐 {new Date(save.data.timestamp).toLocaleDateString()}</span>
                         </div>
