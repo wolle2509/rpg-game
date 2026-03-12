@@ -1778,14 +1778,32 @@ const GlobalStyles = () => (
 // COMPONENTS
 // ============================================================
 
-function HealthBar({ current, max, label, isMana }) {
+// Inject pulse keyframe once
+if (typeof document !== "undefined" && !document.getElementById("hp-pulse-style")) {
+  const st = document.createElement("style");
+  st.id = "hp-pulse-style";
+  st.textContent = `
+    @keyframes hpPulse {
+      0%,100% { opacity: 1; box-shadow: 0 0 4px #ef4444; }
+      50%      { opacity: 0.55; box-shadow: 0 0 14px #ef4444, 0 0 24px #ef444488; }
+    }
+  `;
+  document.head.appendChild(st);
+}
+
+function HealthBar({ current, max, label, isMana, pulse }) {
   const pct = Math.max(0, Math.min(100, (current / max) * 100));
+  const isLow = !isMana && pct <= 25;
   const barColor = isMana ? "#4169E1" : pct > 50 ? "#22c55e" : pct > 25 ? "#eab308" : "#ef4444";
   return (
     <div style={{ marginBottom: 5 }}>
       {label && <div style={{ fontSize: 17, marginBottom: 3, opacity: 0.7 }}>{label}</div>}
       <div style={isMana ? S.manaBar : S.hpBar}>
-        <div style={{ width: `${pct}%`, height: "100%", background: barColor, transition: "width 0.3s", borderRadius: 5 }} />
+        <div style={{
+          width: `${pct}%`, height: "100%", background: barColor,
+          transition: "width 0.3s", borderRadius: 5,
+          ...(pulse && isLow ? { animation: "hpPulse 1s ease-in-out infinite" } : {}),
+        }} />
         <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, fontWeight: 700, color: "#fff", textShadow: "0 0 4px #000" }}>
           {current}/{max}
         </div>
@@ -5392,7 +5410,7 @@ const heroUrl = "hero_sprite.png";
                     )}
                   </div>
                   <div style={{ width: "100%", maxWidth: 120 }}>
-                    <HealthBar current={hp} max={stats.maxHp} />
+                    <HealthBar current={hp} max={stats.maxHp} pulse />
                   </div>
                 </div>
 
@@ -5506,7 +5524,7 @@ const heroUrl = "hero_sprite.png";
                     );
                   })()}
                   <div style={{ width: "100%", maxWidth: 120 }}>
-                    <HealthBar current={enemyHp} max={enemy.hp} />
+                    <HealthBar current={enemyHp} max={enemy.hp} pulse />
                   </div>
 
                   {/* ✅ Floating Damage Texts */}
