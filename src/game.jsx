@@ -491,56 +491,23 @@ const MERCHANT_ITEMS = {
 };
 
 // ✅ NEW: Dynamische Merchant-Tränk-Generierung basierend auf itemLevel
-function generateMerchantPotions(itemLevel) {
-  // Basis-Heilwerte skaliert mit itemLevel
-  const baseHeal = 30 + (itemLevel * 3);
-  const stealthValue = 20;  // Gleich bleibend
-  
-  // Namen basierend auf itemLevel
-  const healNames = [
-    { range: [1, 10], name: "Healing Potion" },
-    { range: [11, 20], name: "Greater Healing Potion" },
-    { range: [21, 30], name: "Superior Healing Potion" },
-    { range: [31, 40], name: "Elixir of Power" },
-    { range: [41, 50], name: "Divine Elixir" },
-  ];
-  
-  const stealthNames = [
-    { range: [1, 10], name: "Stealth Potion" },
-    { range: [11, 20], name: "Shadow Veil" },
-    { range: [21, 30], name: "Phantom Essence" },
-    { range: [31, 40], name: "Void Step" },
-    { range: [41, 50], name: "Ethereal Fade" },
-  ];
-  
-  const getNameForLevel = (names, level) => {
-    for (const entry of names) {
-      if (level >= entry.range[0] && level <= entry.range[1]) {
-        return entry.name;
-      }
-    }
-    return names[names.length - 1].name;
-  };
-  
-  const healName = getNameForLevel(healNames, itemLevel);
-  const stealthName = getNameForLevel(stealthNames, itemLevel);
-  const cost = Math.round(5 + (itemLevel * 3));
-  const stealthCost = Math.round(15 + (itemLevel * 0.5));
-  
+function generateMerchantPotions(playerLevel) {
+  const cost = Math.round(5 * Math.pow(1.20, playerLevel - 1));
+  const stealthCost = Math.round(cost * 2.5);
   return [
     {
-      name: healName,
+      name: "Healing Potion",
       cost: cost,
       type: "consumable",
       effect: "heal",
-      healPercent: 0.5,  // ✅ NEW: Immer 50% max HP, nicht basierend auf itemLevel!
+      healPercent: 0.5,
     },
     {
-      name: stealthName,
+      name: "Stealth Potion",
       cost: stealthCost,
       type: "consumable",
       effect: "repel",
-      value: stealthValue,
+      value: 20,
     },
   ];
 }
@@ -1327,28 +1294,24 @@ function generateRegionCaves(regionId, seed, cities, existingCaves) {
   const caves = [];
   
   // Helper function to find a valid cave position within REGION
-  const findValidCavePosition = () => {
-    const candidates = [];
-    for (let y = Math.max(4, y0); y < y1; y += step) {
-      for (let x = Math.max(4, x0); x < x1; x += step) {
-        let nearCity = false;
-        for (const c of cityList) {
-          if (Math.abs(c.x - x) < 15 && Math.abs(c.y - y) < 15) { nearCity = true; break; }
-        }
-        if (nearCity) continue;
-        const biome = getBiome(x, y, seed);
-        if (!BIOME_BOSSES[biome]) continue;
-        
-        // Check if position already has a cave
-        const key = `${x},${y}`;
-        if (existingCaves[key] || caves.some(c => c.key === key)) continue;
-        
-        candidates.push({ x, y, biome });
+  const findValidCavePosition = (existingKeys) => {
+    const maxAttempts = 200;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const x = Math.floor(x0 + rng() * (x1 - x0));
+      const y = Math.floor(y0 + rng() * (y1 - y0));
+      if (x < 4 || y < 4) continue;
+      const key = `${x},${y}`;
+      if (existingCaves[key] || existingKeys.has(key)) continue;
+      let nearCity = false;
+      for (const c of cityList) {
+        if (Math.abs(c.x - x) < 15 && Math.abs(c.y - y) < 15) { nearCity = true; break; }
       }
+      if (nearCity) continue;
+      const biome = getBiome(x, y, seed);
+      if (!BIOME_BOSSES[biome]) continue;
+      return { x, y, biome };
     }
-    
-    if (candidates.length === 0) return null;
-    return candidates[Math.floor(rng() * candidates.length)];
+    return null;
   };
   
   // Helper function to create cave object
@@ -1389,12 +1352,14 @@ function generateRegionCaves(regionId, seed, cities, existingCaves) {
     };
   };
   
-  // ✅ NEW: Generate exactly 10 caves per REGION (not per chunk!)
-  const cavesToGenerate = 10;  // ✅ 10 Höhlen pro Region!
-  
+  // ✅ Generate exactly 10 caves per REGION (not per chunk!)
+  const cavesToGenerate = 10;
+  const placedKeys = new Set();
+
   for (let i = 0; i < cavesToGenerate; i++) {
-    const pick = findValidCavePosition();
+    const pick = findValidCavePosition(placedKeys);
     if (pick) {
+      placedKeys.add(`${pick.x},${pick.y}`);
       caves.push(createCave(pick, i));
     }
   }
@@ -1572,11 +1537,11 @@ function generateQuestgiverQuests(itemLevel, cities, originCityName, chunkX, chu
       id: bossQuestId,
       type: "questgiver",
       questKind: "chunkBossHunt",
-      title: `Defeat the Dungeon Guardians${regionLabel}!`,
-      description: `Slay any two powerful bosses that dwell in the caves of this region. Their treasures are yours to claim.`,
+      title: `Defeat the Cave Guardian${regionLabel}!`,
+      description: `Slay the powerful boss that dwells in the caves of this region. Their treasure is yours to claim.`,
       targetChunkX: chunkX,
       targetChunkY: chunkY,
-      targetBosses: 2,
+      targetBosses: 1,
       bossKillCount: 0,
       goldReward: Math.round((goldBase + (goldBase + 125)) / 2 * 0.8),
       xpReward:   Math.round((xpBase   + (xpBase   + 150)) / 2 * 1.3),
@@ -2647,6 +2612,280 @@ function CrownSVG({ size = 24 }) {
   );
 }
 
+function SkillsButton({ learnedAbilities, abilityChoicePopup, skillsOpen, setSkillsOpen }) {
+  const hasSkills = learnedAbilities.spells.length > 0 || learnedAbilities.specials.length > 0;
+  const hasPending = !!abilityChoicePopup;
+  return (
+    <button
+      onClick={() => { if (!hasSkills && !hasPending) return; setSkillsOpen(prev => !prev); }}
+      style={{
+        ...S.btn, flex: 1, padding: "8px 6px", fontSize: 17,
+        boxShadow: hasPending ? "0 0 12px #d4af37cc" : "0 2px 12px #000a",
+        background: hasPending ? "linear-gradient(180deg, #2a1e00, #1a1200)"
+          : skillsOpen ? "linear-gradient(180deg, #1a0e2a, #100814)" : "linear-gradient(180deg, #2a1f0e, #1a140a)",
+        borderColor: hasPending ? "#d4af37" : skillsOpen ? "#a855f7" : (hasSkills ? "#a855f7" : "#555"),
+        color: hasPending ? "#d4af37" : skillsOpen ? "#a855f7" : (hasSkills ? "#a855f7" : "#555"),
+        opacity: (hasSkills || hasPending) ? 1 : 0.35,
+        cursor: (hasSkills || hasPending) ? "pointer" : "not-allowed",
+        animation: hasPending ? "pulse 1.2s ease-in-out infinite" : "none",
+      }}
+    >
+      ✨ Skills{hasPending ? " !" : ""}
+    </button>
+  );
+}
+
+function GearScore({ equipment }) {
+  return (equipment.weapon?.itemLevel || 0) +
+    (equipment.chest?.itemLevel || 0) +
+    (equipment.shield?.itemLevel || 0) +
+    (equipment.head?.itemLevel || 0);
+}
+
+function InventoryPanel({ stackedInventory, inventory, currentCity, useItem, equipItem, sellItem, discardItem, setInventoryOpen, getUniqueStacks }) {
+  const potions    = stackedInventory.filter(s => s.item.type === "consumable");
+  const questItems = stackedInventory.filter(s => s.item.type === "questitem" || s.item.type === "deliveryitem");
+  const equips     = stackedInventory.filter(s => s.item.type === "armor");
+  const sectionLabel = (txt) => (
+    <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: "uppercase", opacity: 0.45, margin: "10px 0 5px 0" }}>{txt}</div>
+  );
+  const renderStack = (stack) => {
+    const { item, count, indices } = stack;
+    const idx = indices[0];
+    const sellValue = Math.max(1, Math.floor((item.cost || 10) * 0.1));
+    const subText = item.type === "consumable"
+      ? (item.effect === "repel" ? `${item.value} steps no encounters` : `${item.healPercent ? `+${Math.round(item.healPercent * 100)}% HP` : `+${item.value} HP`}`)
+      : item.type === "armor"
+        ? `${item.rarity || "Normal"} • ${item.slot.charAt(0).toUpperCase() + item.slot.slice(1)}${item.bonusDamage > 0 ? ` • +${item.bonusDamage} Dmg` : ""}${item.bonusDefense > 0 ? ` • +${item.bonusDefense} Def` : ""}${item.itemLevel ? ` • Lvl ${item.itemLevel}` : ""}`
+        : item.type === "deliveryitem" ? "📬 Delivery" : "Quest Item";
+    return (
+      <div key={stack.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid #d4af3709", gap: 6 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: item.rarityColor || "#e8d7c3", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {item.name}{count > 1 && <span style={{ color: "#d4af37", marginLeft: 5 }}>×{count}</span>}
+          </div>
+          <div style={{ fontSize: 12, opacity: 0.5, marginTop: 1 }}>{subText}</div>
+        </div>
+        <div style={{ display: "flex", gap: 3, flexShrink: 0 }}>
+          {item.type === "consumable" && (
+            <button onClick={() => useItem(item, idx)} style={{ ...S.btn, ...S.btnSuccess, padding: "3px 8px", fontSize: 12 }}>Use</button>
+          )}
+          {item.type === "armor" && (
+            <button onClick={() => equipItem(item, idx)} style={{ ...S.btn, padding: "3px 8px", fontSize: 12, borderColor: "#60a5fa88", color: "#60a5fa" }}>Equip</button>
+          )}
+          {currentCity && item.type !== "questitem" && item.type !== "deliveryitem" && (
+            <button onClick={() => sellItem(idx)} style={{ ...S.btn, padding: "3px 8px", fontSize: 12 }}>{sellValue}g</button>
+          )}
+          <button onClick={() => discardItem(idx)} style={{ ...S.btn, ...S.btnDanger, padding: "3px 8px", fontSize: 12 }}>🗑️</button>
+        </div>
+      </div>
+    );
+  };
+  return (
+    <div style={{
+      position: "fixed", bottom: 60, left: 8, zIndex: 999,
+      width: "calc(25% - 14px)", maxHeight: "70vh", overflowY: "auto",
+      background: "rgba(10,14,39,0.97)", border: "1px solid #d4af3766",
+      borderRadius: 10, padding: 14, boxShadow: "0 4px 24px #000c",
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, paddingBottom: 8, borderBottom: "1px solid #d4af3722" }}>
+        <span style={{ ...S.gold, fontSize: 17, fontWeight: 700 }}>🎒 Bag</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 12, opacity: 0.5 }}>{getUniqueStacks(inventory)}/{INVENTORY_CAPACITY}</span>
+          <button onClick={() => setInventoryOpen(false)} style={{ background: "none", border: "none", color: "#e8d7c3", cursor: "pointer", fontSize: 18, padding: 0 }}>✕</button>
+        </div>
+      </div>
+      {stackedInventory.length === 0 && <div style={{ opacity: 0.5, fontSize: 14, textAlign: "center", padding: 12 }}>Bag is empty.</div>}
+      {potions.length > 0 && <>{sectionLabel("Potions")}{potions.map(renderStack)}</>}
+      {questItems.length > 0 && <>{sectionLabel("Quest Items")}{questItems.map(renderStack)}</>}
+      {equips.length > 0 && <>{sectionLabel("Equipment")}{equips.map(renderStack)}</>}
+    </div>
+  );
+}
+
+function AbilityCards({ abilityChoicePopup, learnAbility }) {
+  const tag = (label, color, bg) => (
+    <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, fontWeight: 600, background: bg, color, border: `1px solid ${color}44`, whiteSpace: "nowrap" }}>{label}</span>
+  );
+  const effectDesc = (s) => {
+    if (s.effect === "slow")       return "-50% enemy dmg";
+    if (s.effect === "bleed")      return `Bleed ${s.bleedDuration} rounds`;
+    if (s.effect === "burn")       return `Burn ${s.burnDuration} rounds`;
+    if (s.effect === "poison")     return `Poison ${s.poisonDuration} rounds`;
+    if (s.effect === "stun")       return `Stun ${s.stunDuration} rounds`;
+    if (s.effect === "crit")       return "Guaranteed crit ×2";
+    if (s.effect === "defense")    return "+50% Defense 2 rounds";
+    if (s.effect === "heal")       return `Lifesteal ${Math.round((s.healPercent||0)*100)}%`;
+    if (s.effect === "playerHeal") return "Heals you";
+    if (s.effect === "dodge")      return "Stealth 2 rounds";
+    return null;
+  };
+  const renderCard = (ability, type) => {
+    const isSpell = type === "spell";
+    const accent = isSpell ? "#4169E1" : "#ff8800";
+    const bg = isSpell ? "#0066ff11" : "#ff660011";
+    const desc = effectDesc(ability);
+    return (
+      <button key={ability.id} onClick={() => learnAbility(ability.id, type)}
+        style={{ display: "block", width: "100%", padding: "12px 14px", marginBottom: 10, borderRadius: 8, background: bg, border: `1px solid ${accent}55`, color: "#e8d7c3", cursor: "pointer", textAlign: "left", transition: "all 0.2s" }}
+        onMouseEnter={e => { e.currentTarget.style.background = `${accent}22`; e.currentTarget.style.boxShadow = `0 0 14px ${accent}44`; }}
+        onMouseLeave={e => { e.currentTarget.style.background = bg; e.currentTarget.style.boxShadow = "none"; }}
+      >
+        <div style={{ fontWeight: 700, fontSize: 16, color: accent, marginBottom: 6 }}>{ability.name}</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: desc ? 6 : 0 }}>
+          {isSpell ? tag(`${ability.manaCost} Mana`, "#60a5fa", "#60a5fa11") : tag(`${Math.round(ability.hpCostPercent * 100)}% HP`, "#f87171", "#f8717111")}
+          {ability.dmgRange && ability.dmgRange[1] > 0 && tag(`${ability.dmgRange[0]}–${ability.dmgRange[1]} Dmg`, "#ef4444", "#ef444411")}
+          {ability.hitCount && tag(`×${ability.hitCount} Hits`, "#fbbf24", "#fbbf2411")}
+          {desc && tag(desc, "#c084fc", "#c084fc11")}
+        </div>
+      </button>
+    );
+  };
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+      <div style={{ padding: 12, background: "#0066ff08", borderRadius: 8, border: "1px solid #0066ff33" }}>
+        <h3 style={{ color: "#4169E1", margin: "0 0 12px 0", fontSize: 18 }}>🔮 Spells (Mana)</h3>
+        {abilityChoicePopup?.availableSpells?.length > 0
+          ? abilityChoicePopup.availableSpells.map(s => renderCard(s, "spell"))
+          : <div style={{ opacity: 0.5, fontSize: 13 }}>No new spells available</div>}
+      </div>
+      <div style={{ padding: 12, background: "#ff660008", borderRadius: 8, border: "1px solid #ff660033" }}>
+        <h3 style={{ color: "#ff8800", margin: "0 0 12px 0", fontSize: 18 }}>⚡ Specials (HP)</h3>
+        {abilityChoicePopup?.availableSpecials?.length > 0
+          ? abilityChoicePopup.availableSpecials.map(s => renderCard(s, "special"))
+          : <div style={{ opacity: 0.5, fontSize: 13 }}>No new specials available</div>}
+      </div>
+    </div>
+  );
+}
+
+function EnemyLevelBadge({ enemyLevel, playerLevel }) {
+  const diff = enemyLevel - playerLevel;
+  const lvColor = diff <= -5 ? "#6b7280" : diff <= -2 ? "#4ade80" : diff <= 2 ? "#facc15" : diff <= 5 ? "#fb923c" : "#ef4444";
+  return <div style={{ fontSize: 12, fontWeight: 700, color: lvColor, letterSpacing: 1 }}>Lv.{enemyLevel}</div>;
+}
+
+function CombatItemsPanel({ inventory, useItemInCombat }) {
+  const seen = new Map();
+  const consumables = [];
+  for (let i = 0; i < inventory.length; i++) {
+    const item = inventory[i];
+    if (item.type !== "consumable") continue;
+    if (seen.has(item.name)) { seen.get(item.name).count++; }
+    else { const entry = { item, idx: i, count: 1 }; seen.set(item.name, entry); consumables.push(entry); }
+  }
+  return (
+    <div style={{ background: "#ffffff06", borderRadius: 8, padding: 10, marginBottom: 12, border: "1px solid #4ade8033" }}>
+      <div style={{ fontSize: 14, opacity: 0.5, marginBottom: 6 }}>Use an item (costs your turn):</div>
+      {consumables.length === 0 && <div style={{ fontSize: 15, opacity: 0.4 }}>No consumables available.</div>}
+      {consumables.map(({ item, idx, count }) => (
+        <div key={item.name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 0", borderBottom: "1px solid #d4af3711" }}>
+          <div>
+            <span style={{ fontSize: 15, fontWeight: 600 }}>{item.name}</span>
+            {count > 1 && <span style={{ fontSize: 14, fontWeight: 700, ...S.gold, marginLeft: 6 }}>×{count}</span>}
+            <span style={{ fontSize: 13, opacity: 0.5, marginLeft: 6 }}>{item.effect === "repel" ? `${item.value} steps` : `${item.healPercent ? `+${Math.round(item.healPercent * 100)}% HP` : `+${item.value} HP`}`}</span>
+          </div>
+          <button onClick={() => useItemInCombat(item, idx)} style={{ ...S.btn, ...S.btnSuccess, padding: "4px 12px", fontSize: 14 }}>Use</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function CaveQuestBanner({ quests, caveConfirm, getQuestProgress }) {
+  const relatedQuest = quests.find(q =>
+    q.questKind === "chunkBossHunt" &&
+    q.targetChunkX === Math.floor(caveConfirm.x / CHUNK_SIZE) &&
+    q.targetChunkY === Math.floor(caveConfirm.y / CHUNK_SIZE)
+  );
+  if (!relatedQuest) return null;
+  if (!relatedQuest.accepted) return (
+    <div style={{ background: "#d4af3722", borderLeft: "4px solid #d4af37", padding: 12, borderRadius: 6, marginBottom: 16, fontSize: 14, textAlign: "left" }}>
+      <div style={{ fontWeight: 600, color: "#d4af37", marginBottom: 4 }}>📜 Quest Available</div>
+      <div style={{ opacity: 0.8 }}>A quest awaits in the nearby town:<br/><span style={{ color: "#d4af37", fontWeight: 500 }}>"{relatedQuest.title}"</span></div>
+    </div>
+  );
+  const progress = getQuestProgress(relatedQuest);
+  return (
+    <div style={{ background: "#4ade8022", borderLeft: "4px solid #4ade80", padding: 12, borderRadius: 6, marginBottom: 16, fontSize: 14, textAlign: "left" }}>
+      <div style={{ fontWeight: 600, color: "#4ade80", marginBottom: 4 }}>⚔️ Quest Active</div>
+      <div style={{ opacity: 0.8 }}>{relatedQuest.title}<br/><span style={{ color: "#4ade80" }}>Progress: {progress}/{relatedQuest.targetBosses}</span></div>
+    </div>
+  );
+}
+
+function SkillsPanel({ learnedAbilities, onClose }) {
+  const tag = (label, cls) => (
+    <span style={{
+      fontSize: 11, padding: "2px 7px", borderRadius: 4, fontWeight: 600, whiteSpace: "nowrap",
+      ...(cls === "dmg"    ? { background: "rgba(239,68,68,0.15)",   color: "#ef4444", border: "1px solid rgba(239,68,68,0.3)" }   :
+         cls === "mana"   ? { background: "rgba(65,105,225,0.15)",  color: "#60a5fa", border: "1px solid rgba(65,105,225,0.3)" }  :
+         cls === "hp"     ? { background: "rgba(239,68,68,0.12)",   color: "#f87171", border: "1px solid rgba(239,68,68,0.2)" }   :
+         cls === "effect" ? { background: "rgba(168,85,247,0.12)",  color: "#c084fc", border: "1px solid rgba(168,85,247,0.25)" } :
+         cls === "heal"   ? { background: "rgba(74,222,128,0.12)",  color: "#4ade80", border: "1px solid rgba(74,222,128,0.25)" } :
+         cls === "hits"   ? { background: "rgba(251,191,36,0.12)",  color: "#fbbf24", border: "1px solid rgba(251,191,36,0.25)" } :
+         cls === "dur"    ? { background: "rgba(148,163,184,0.1)",  color: "#94a3b8", border: "1px solid rgba(148,163,184,0.2)" } :
+                            { background: "rgba(255,255,255,0.05)", color: "#9ca3af", border: "1px solid rgba(255,255,255,0.1)" })
+    }}>{label}</span>
+  );
+  const sectionLabel = (txt, sub) => (
+    <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: "uppercase", opacity: 0.45, margin: "10px 0 6px 0", display: "flex", alignItems: "center", gap: 6 }}>
+      {txt} {sub && <span style={{ fontSize: 10, opacity: 0.6, textTransform: "none", letterSpacing: 0 }}>{sub}</span>}
+      <div style={{ flex: 1, height: 1, background: "rgba(212,175,55,0.1)" }} />
+    </div>
+  );
+  const renderSkill = (s, type) => {
+    const duration = s.slowDuration || s.bleedDuration || s.burnDuration || s.poisonDuration || s.stunDuration || null;
+    const effectLabel =
+      s.effect === "slow"       ? "-50% enemy dmg" :
+      s.effect === "bleed"      ? "Bleed/round" :
+      s.effect === "burn"       ? "Burn/round" :
+      s.effect === "poison"     ? "Poison/round" :
+      s.effect === "stun"       ? "Stun" :
+      s.effect === "crit"       ? "Guaranteed Crit ×2" :
+      s.effect === "defense"    ? "+50% Defense" :
+      s.effect === "heal"       ? `${Math.round((s.healPercent||0)*100)}% Lifesteal` :
+      s.effect === "playerHeal" ? "Heal Self" :
+      s.effect === "reflect"    ? "No extra effect" :
+      s.effect === "dodge"      ? "Stealth 2 rounds" :
+      null;
+    return (
+      <div key={s.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 0", borderBottom: "1px solid rgba(212,175,55,0.07)" }}>
+        <div style={{ fontSize: 20, width: 28, textAlign: "center", flexShrink: 0, marginTop: 1 }}>{s.name.split(" ")[0]}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#e8d7c3", marginBottom: 2 }}>{s.name.split(" ").slice(1).join(" ")}</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
+            {s.dmgRange && s.dmgRange[1] > 0 && tag(`${s.dmgRange[0]}–${s.dmgRange[1]} Dmg`, "dmg")}
+            {type === "spell"   && tag(`${s.manaCost} Mana`, "mana")}
+            {type === "special" && tag(`${Math.round(s.hpCostPercent * 100)}% HP`, "hp")}
+            {s.hitCount         && tag(`×${s.hitCount} Hits`, "hits")}
+            {effectLabel        && tag(effectLabel, "effect")}
+            {duration           && tag(`🕐 ${duration} rounds`, "dur")}
+            {tag(`Lv. ${s.level}`, "lvl")}
+          </div>
+        </div>
+      </div>
+    );
+  };
+  const learnedSpells   = SPELLS.filter(s => learnedAbilities.spells.includes(s.id));
+  const learnedSpecials = SPECIALS.filter(s => learnedAbilities.specials.includes(s.id));
+  return (
+    <div style={{
+      position: "fixed", bottom: 60, right: 8, zIndex: 999,
+      width: "calc(20% - 12px)", maxHeight: "70vh", overflowY: "auto",
+      background: "rgba(10,14,39,0.97)", border: "1px solid rgba(168,85,247,0.4)",
+      borderRadius: 10, padding: 14, boxShadow: "0 4px 24px #000c",
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, paddingBottom: 8, borderBottom: "1px solid rgba(168,85,247,0.2)" }}>
+        <span style={{ color: "#a855f7", fontSize: 17, fontWeight: 700 }}>✨ Skills</span>
+        <button onClick={onClose} style={{ background: "none", border: "none", color: "#e8d7c3", cursor: "pointer", fontSize: 18, padding: 0 }}>✕</button>
+      </div>
+      {learnedSpells.length > 0 && <>{sectionLabel("🔵 Spells", "(Mana)")}{learnedSpells.map(s => renderSkill(s, "spell"))}</>}
+      {learnedSpecials.length > 0 && <>{sectionLabel("🔴 Specials", "(HP)")}{learnedSpecials.map(s => renderSkill(s, "special"))}</>}
+    </div>
+  );
+}
+
 function Game({ playerData, onMainMenu }) {
   const isLoaded = !playerData.isNew && playerData.worldSeed != null;
   const playerName = playerData.name || playerData.playerName;
@@ -2777,6 +3016,8 @@ const heroUrl = "hero_sprite.png";
   const [restType, setRestType] = useState("free");
   const [questLogOpen, setQuestLogOpen] = useState(false);
   const [worldMapOpen, setWorldMapOpen] = useState(false);
+  const [fastTravelMode, setFastTravelMode] = useState(false);
+  const [fastTravelConfirm, setFastTravelConfirm] = useState(null); // { name, x, y }
   const [mapZoom, setMapZoom] = useState(2);
   const [mapCenter, setMapCenter] = useState(null);
   const [mapTooltip, setMapTooltip] = useState(null); // { name, x, y } screen coords
@@ -2902,7 +3143,7 @@ const heroUrl = "hero_sprite.png";
     }
     if (quest.questKind === "chunkBossHunt") {
       // ✅ Boss hunt quests track bossKillCount
-      return Math.min(quest.bossKillCount || 0, quest.targetBosses || 2);
+      return Math.min(quest.bossKillCount || 0, quest.targetBosses || 1);
     }
     if (quest.questKind === "deliver") {
       return inventory.some(i => i.name === quest.deliverItem && i.type === "deliveryitem") ? 1 : 0;
@@ -3097,6 +3338,7 @@ const heroUrl = "hero_sprite.png";
 
     // ✅ NOW move to normal tile
     setPos({ x: nx, y: ny });
+    setHp(prev => Math.min(prev + Math.max(1, Math.floor(stats.maxHp * 0.02)), stats.maxHp));
 
     const tileBiome = getBiome(nx, ny, worldSeed);
     const noEncounterBiomes = new Set(["ocean"]);
@@ -4800,32 +5042,7 @@ const heroUrl = "hero_sprite.png";
         >
           📜 Quests {activeQuests.length > 0 ? `(${activeQuests.length})` : ""}
         </button>
-        {(() => {
-          const hasSkills = learnedAbilities.spells.length > 0 || learnedAbilities.specials.length > 0;
-          const hasPending = !!abilityChoicePopup;
-          return (
-            <button
-              onClick={() => {
-                if (!hasSkills && !hasPending) return;
-                setSkillsOpen(prev => !prev);
-              }}
-              style={{
-                ...S.btn, flex: 1, padding: "8px 6px", fontSize: 17,
-                boxShadow: hasPending ? "0 0 12px #d4af37cc" : "0 2px 12px #000a",
-                background: hasPending
-                  ? "linear-gradient(180deg, #2a1e00, #1a1200)"
-                  : skillsOpen ? "linear-gradient(180deg, #1a0e2a, #100814)" : "linear-gradient(180deg, #2a1f0e, #1a140a)",
-                borderColor: hasPending ? "#d4af37" : skillsOpen ? "#a855f7" : (hasSkills ? "#a855f7" : "#555"),
-                color: hasPending ? "#d4af37" : skillsOpen ? "#a855f7" : (hasSkills ? "#a855f7" : "#555"),
-                opacity: (hasSkills || hasPending) ? 1 : 0.35,
-                cursor: (hasSkills || hasPending) ? "pointer" : "not-allowed",
-                animation: hasPending ? "pulse 1.2s ease-in-out infinite" : "none",
-              }}
-            >
-              ✨ Skills{hasPending ? " !" : ""}
-            </button>
-          );
-        })()}
+        <SkillsButton learnedAbilities={learnedAbilities} abilityChoicePopup={abilityChoicePopup} skillsOpen={skillsOpen} setSkillsOpen={setSkillsOpen} />
       </div>
       {questLogOpen && (
         <div style={{
@@ -4890,77 +5107,10 @@ const heroUrl = "hero_sprite.png";
           })}
         </div>
       )}
-      {skillsOpen && (() => {
-        const tag = (label, cls) => (
-          <span style={{
-            fontSize: 11, padding: "2px 7px", borderRadius: 4, fontWeight: 600, whiteSpace: "nowrap",
-            ...(cls === "dmg"    ? { background: "rgba(239,68,68,0.15)",   color: "#ef4444", border: "1px solid rgba(239,68,68,0.3)" }   :
-               cls === "mana"   ? { background: "rgba(65,105,225,0.15)",  color: "#60a5fa", border: "1px solid rgba(65,105,225,0.3)" }  :
-               cls === "hp"     ? { background: "rgba(239,68,68,0.12)",   color: "#f87171", border: "1px solid rgba(239,68,68,0.2)" }   :
-               cls === "effect" ? { background: "rgba(168,85,247,0.12)",  color: "#c084fc", border: "1px solid rgba(168,85,247,0.25)" } :
-               cls === "heal"   ? { background: "rgba(74,222,128,0.12)",  color: "#4ade80", border: "1px solid rgba(74,222,128,0.25)" } :
-               cls === "hits"   ? { background: "rgba(251,191,36,0.12)",  color: "#fbbf24", border: "1px solid rgba(251,191,36,0.25)" } :
-               cls === "dur"    ? { background: "rgba(148,163,184,0.1)",  color: "#94a3b8", border: "1px solid rgba(148,163,184,0.2)" } :
-                                  { background: "rgba(255,255,255,0.05)", color: "#9ca3af", border: "1px solid rgba(255,255,255,0.1)" })
-          }}>{label}</span>
-        );
-        const sectionLabel = (txt, sub) => (
-          <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: "uppercase", opacity: 0.45, margin: "10px 0 6px 0", display: "flex", alignItems: "center", gap: 6 }}>
-            {txt} {sub && <span style={{ fontSize: 10, opacity: 0.6, textTransform: "none", letterSpacing: 0 }}>{sub}</span>}
-            <div style={{ flex: 1, height: 1, background: "rgba(212,175,55,0.1)" }} />
-          </div>
-        );
-        const renderSkill = (s, type) => {
-          const duration = s.slowDuration || s.bleedDuration || s.burnDuration || s.poisonDuration || s.stunDuration || null;
-          const effectLabel =
-            s.effect === "slow"       ? "-50% enemy dmg" :
-            s.effect === "bleed"      ? "Bleed/round" :
-            s.effect === "burn"       ? "Burn/round" :
-            s.effect === "poison"     ? "Poison/round" :
-            s.effect === "stun"       ? "Stun" :
-            s.effect === "crit"       ? "Guaranteed Crit ×2" :
-            s.effect === "defense"    ? "+50% Defense" :
-            s.effect === "heal"       ? `${Math.round((s.healPercent||0)*100)}% Lifesteal` :
-            s.effect === "playerHeal" ? "Heal Self" :
-            s.effect === "reflect"    ? "No extra effect" :
-            s.effect === "dodge"      ? "Stealth 2 rounds" :
-            null;
-          return (
-            <div key={s.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 0", borderBottom: "1px solid rgba(212,175,55,0.07)" }}>
-              <div style={{ fontSize: 20, width: 28, textAlign: "center", flexShrink: 0, marginTop: 1 }}>{s.name.split(" ")[0]}</div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: "#e8d7c3", marginBottom: 2 }}>{s.name.split(" ").slice(1).join(" ")}</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
-                  {s.dmgRange && s.dmgRange[1] > 0 && tag(`${s.dmgRange[0]}–${s.dmgRange[1]} Dmg`, "dmg")}
-                  {type === "spell"   && tag(`${s.manaCost} Mana`, "mana")}
-                  {type === "special" && tag(`${Math.round(s.hpCostPercent * 100)}% HP`, "hp")}
-                  {s.hitCount         && tag(`×${s.hitCount} Hits`, "hits")}
-                  {effectLabel        && tag(effectLabel, "effect")}
-                  {duration           && tag(`🕐 ${duration} rounds`, "dur")}
-                  {tag(`Lv. ${s.level}`, "lvl")}
-                </div>
-              </div>
-            </div>
-          );
-        };
-        const learnedSpells   = SPELLS.filter(s => learnedAbilities.spells.includes(s.id));
-        const learnedSpecials = SPECIALS.filter(s => learnedAbilities.specials.includes(s.id));
-        return (
-          <div style={{
-            position: "fixed", bottom: 60, right: 8, zIndex: 999,
-            width: "calc(20% - 12px)", maxHeight: "70vh", overflowY: "auto",
-            background: "rgba(10,14,39,0.97)", border: "1px solid rgba(168,85,247,0.4)",
-            borderRadius: 10, padding: 14, boxShadow: "0 4px 24px #000c",
-          }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, paddingBottom: 8, borderBottom: "1px solid rgba(168,85,247,0.2)" }}>
-              <span style={{ color: "#a855f7", fontSize: 17, fontWeight: 700 }}>✨ Skills</span>
-              <button onClick={() => setSkillsOpen(false)} style={{ background: "none", border: "none", color: "#e8d7c3", cursor: "pointer", fontSize: 18, padding: 0 }}>✕</button>
-            </div>
-            {learnedSpells.length > 0 && <>{sectionLabel("🔵 Spells", "(Mana)")}{learnedSpells.map(s => renderSkill(s, "spell"))}</>}
-            {learnedSpecials.length > 0 && <>{sectionLabel("🔴 Specials", "(HP)")}{learnedSpecials.map(s => renderSkill(s, "special"))}</>}
-          </div>
-        );
-      })()}
+      {skillsOpen && <SkillsPanel
+        learnedAbilities={learnedAbilities}
+        onClose={() => setSkillsOpen(false)}
+      />}
       {charWindowOpen && (
         <div style={{
           position: "fixed", bottom: 60, left: "calc(25% + 8px)", zIndex: 999,
@@ -5099,13 +5249,7 @@ const heroUrl = "hero_sprite.png";
               <div>
                 <div style={{ fontSize: 12, opacity: 0.6, textTransform: "uppercase", letterSpacing: 0.5 }}>Gearscore</div>
                 <div style={{ fontSize: 18, fontWeight: 700, color: "#d4af37" }}>
-                  {(() => {
-                    const GearscoreChar = (equipment.weapon?.itemLevel || 0) +
-                                          (equipment.chest?.itemLevel || 0) +
-                                          (equipment.shield?.itemLevel || 0) +
-                                          (equipment.head?.itemLevel || 0);  // ✅ ADD: Helm
-                    return GearscoreChar;
-                  })()}
+                  <GearScore equipment={equipment} />
                 </div>
               </div>
               <div style={{ marginLeft: "auto", fontSize: 12, opacity: 0.5 }}>
@@ -5117,68 +5261,7 @@ const heroUrl = "hero_sprite.png";
           </div>
         </div>
       )}
-      {inventoryOpen && (() => {
-        const potions   = stackedInventory.filter(s => s.item.type === "consumable");
-        const questItems= stackedInventory.filter(s => s.item.type === "questitem" || s.item.type === "deliveryitem");
-        const equipment = stackedInventory.filter(s => s.item.type === "armor");
-        const sectionLabel = (txt) => (
-          <div style={{ fontSize: 11, letterSpacing: 1.5, textTransform: "uppercase", opacity: 0.45, margin: "10px 0 5px 0" }}>{txt}</div>
-        );
-        const renderStack = (stack) => {
-          const { item, count, indices } = stack;
-          const idx = indices[0];
-          const sellValue = Math.max(1, Math.floor((item.cost || 10) * 0.1));
-          const subText = item.type === "consumable"
-            ? (item.effect === "repel" ? `${item.value} steps no encounters` : `${item.healPercent ? `+${Math.round(item.healPercent * 100)}% HP` : `+${item.value} HP`}`)
-            : item.type === "armor"
-              ? `${item.rarity || "Normal"} • ${item.slot.charAt(0).toUpperCase() + item.slot.slice(1)}${item.bonusDamage > 0 ? ` • +${item.bonusDamage} Dmg` : ""}${item.bonusDefense > 0 ? ` • +${item.bonusDefense} Def` : ""}${item.itemLevel ? ` • Lvl ${item.itemLevel}` : ""}`
-              : item.type === "deliveryitem" ? "📬 Delivery" : "Quest Item";
-          return (
-            <div key={stack.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid #d4af3709", gap: 6 }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: item.rarityColor || "#e8d7c3", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {item.name}{count > 1 && <span style={{ color: "#d4af37", marginLeft: 5 }}>×{count}</span>}
-                </div>
-                <div style={{ fontSize: 12, opacity: 0.5, marginTop: 1 }}>{subText}</div>
-              </div>
-              <div style={{ display: "flex", gap: 3, flexShrink: 0 }}>
-                {item.type === "consumable" && (
-                  <button onClick={() => useItem(item, idx)} style={{ ...S.btn, ...S.btnSuccess, padding: "3px 8px", fontSize: 12 }}>Use</button>
-                )}
-                {item.type === "armor" && (
-                  <button onClick={() => equipItem(item, idx)} style={{ ...S.btn, padding: "3px 8px", fontSize: 12, borderColor: "#60a5fa88", color: "#60a5fa" }}>Equip</button>
-                )}
-                {currentCity && item.type !== "questitem" && item.type !== "deliveryitem" && (
-                  <button onClick={() => sellItem(idx)} style={{ ...S.btn, padding: "3px 8px", fontSize: 12 }}>{sellValue}g</button>
-                )}
-                <button onClick={() => discardItem(idx)} style={{ ...S.btn, ...S.btnDanger, padding: "3px 8px", fontSize: 12 }}>🗑️</button>
-              </div>
-            </div>
-          );
-        };
-        return (
-          <div style={{
-            position: "fixed", bottom: 60, left: 8, zIndex: 999,
-            width: "calc(25% - 14px)", maxHeight: "70vh", overflowY: "auto",
-            background: "rgba(10,14,39,0.97)", border: "1px solid #d4af3766",
-            borderRadius: 10, padding: 14, boxShadow: "0 4px 24px #000c",
-          }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, paddingBottom: 8, borderBottom: "1px solid #d4af3722" }}>
-              <span style={{ ...S.gold, fontSize: 17, fontWeight: 700 }}>🎒 Bag</span>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 12, opacity: 0.5 }}>{getUniqueStacks(inventory)}/{INVENTORY_CAPACITY}</span>
-                <button onClick={() => setInventoryOpen(false)} style={{ background: "none", border: "none", color: "#e8d7c3", cursor: "pointer", fontSize: 18, padding: 0 }}>✕</button>
-              </div>
-            </div>
-
-            {stackedInventory.length === 0 && <div style={{ opacity: 0.5, fontSize: 14, textAlign: "center", padding: 12 }}>Bag is empty.</div>}
-
-            {potions.length > 0 && <>{sectionLabel("Potions")}{potions.map(renderStack)}</>}
-            {questItems.length > 0 && <>{sectionLabel("Quest Items")}{questItems.map(renderStack)}</>}
-            {equipment.length > 0 && <>{sectionLabel("Equipment")}{equipment.map(renderStack)}</>}
-          </div>
-        );
-      })()}
+      {inventoryOpen && <InventoryPanel stackedInventory={stackedInventory} inventory={inventory} currentCity={currentCity} useItem={useItem} equipItem={equipItem} sellItem={sellItem} discardItem={discardItem} setInventoryOpen={setInventoryOpen} getUniqueStacks={getUniqueStacks} />}
     </>
   );
 
@@ -5431,13 +5514,16 @@ const heroUrl = "hero_sprite.png";
         padding: 16, boxShadow: "0 8px 32px #000c", maxWidth: "95vw", maxHeight: "90vh", overflow: "auto",
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-          <h3 style={{ ...S.gold, margin: 0, fontSize: 21, display:"flex", alignItems:"center", gap:8 }}><CastleSVG size={28}/> World Map</h3>
+          <h3 style={{ ...S.gold, margin: 0, fontSize: 21, display:"flex", alignItems:"center", gap:8 }}>
+            <CastleSVG size={28}/> World Map
+            {fastTravelMode && <span style={{ fontSize: 13, color: "#60a5fa", fontWeight: 600, marginLeft: 8 }}>— Click a visited city to travel</span>}
+          </h3>
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
             <button onClick={() => { setMapCenter(null); }} style={{ ...S.btn, padding: "4px 10px", fontSize: 14 }}>📍 Player</button>
             <button onClick={() => setMapZoom(z => Math.min(3, z + 1))} style={{ ...S.btn, padding: "4px 10px", fontSize: 18 }} disabled={mapZoom >= 3}>🔍+</button>
             <span style={{ fontSize: 13, opacity: 0.5, minWidth: 32, textAlign: "center" }}>{MAP_ZOOM_LEVELS[mapZoom]?.label}</span>
             <button onClick={() => setMapZoom(z => Math.max(0, z - 1))} style={{ ...S.btn, padding: "4px 10px", fontSize: 18 }} disabled={mapZoom <= 0}>🔍−</button>
-            <button onClick={() => { setWorldMapOpen(false); setMapCenter(null); }} style={{ background: "none", border: "none", color: "#e8d7c3", cursor: "pointer", fontSize: 28, padding: 0, marginLeft: 8 }}>✕</button>
+            <button onClick={() => { setWorldMapOpen(false); setMapCenter(null); setFastTravelMode(false); }} style={{ background: "none", border: "none", color: "#e8d7c3", cursor: "pointer", fontSize: 28, padding: 0, marginLeft: 8 }}>✕</button>
           </div>
         </div>
         <div style={{ display: "flex", justifyContent: "center", position: "relative" }}
@@ -5499,7 +5585,32 @@ const heroUrl = "hero_sprite.png";
             setMapZoom(newZoom);
           }}
         >
-          <canvas ref={bigMapCanvasRef} style={{ borderRadius: 6, border: "1px solid #d4af3733", imageRendering: "pixelated" }} />
+          <canvas ref={bigMapCanvasRef} style={{ borderRadius: 6, border: "1px solid #d4af3733", imageRendering: "pixelated", cursor: fastTravelMode ? "pointer" : "default" }}
+            onClick={e => {
+              if (!fastTravelMode) return;
+              const rect = bigMapCanvasRef.current?.getBoundingClientRect();
+              if (!rect) return;
+              const zoom = MAP_ZOOM_LEVELS[mapZoom];
+              const center = mapCenter || pos;
+              const mx = e.clientX - rect.left;
+              const my = e.clientY - rect.top;
+              const tileX = Math.round(center.x + (mx / zoom.px) - zoom.radius);
+              const tileY = Math.round(center.y + (my / zoom.px) - zoom.radius);
+              const searchR = zoom.px <= 1 ? 6 : zoom.px <= 3 ? 4 : zoom.px <= 6 ? 2 : 1;
+              let closest = null, closestDist = Infinity;
+              for (let dy = -searchR; dy <= searchR; dy++) {
+                for (let dx = -searchR; dx <= searchR; dx++) {
+                  const ck = `${tileX + dx},${tileY + dy}`;
+                  const dist = dx * dx + dy * dy;
+                  if (cities[ck] && visitedCities.has(cities[ck].name) && dist < closestDist) {
+                    closestDist = dist;
+                    closest = { name: cities[ck].name, x: cities[ck].x, y: cities[ck].y };
+                  }
+                }
+              }
+              if (closest) setFastTravelConfirm(closest);
+            }}
+          />
         </div>
         {mapTooltip && (
           <div style={{
@@ -5533,6 +5644,33 @@ const heroUrl = "hero_sprite.png";
           ))}
         </div>
       </div>
+      {fastTravelConfirm && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1200 }}
+          onClick={() => setFastTravelConfirm(null)}>
+          <div onClick={e => e.stopPropagation()} style={{
+            background: "rgba(15,20,45,0.99)", border: "1px solid #60a5fa88", borderRadius: 10,
+            padding: "24px 28px", textAlign: "center", minWidth: 260, boxShadow: "0 8px 32px #000c",
+          }}>
+            <CastleSVG size={48}/>
+            <div style={{ ...S.gold, fontSize: 19, fontWeight: 700, margin: "12px 0 6px 0" }}>Fast Travel</div>
+            <div style={{ fontSize: 16, opacity: 0.8, marginBottom: 18 }}>
+              Travel to <strong style={S.gold}>{fastTravelConfirm.name}</strong>?
+            </div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+              <button style={{ ...S.btn, ...S.btnSuccess, padding: "8px 24px", fontSize: 16 }} onClick={() => {
+                setPos({ x: fastTravelConfirm.x, y: fastTravelConfirm.y });
+                setCurrentCity(Object.values(cities).find(c => c.name === fastTravelConfirm.name) || null);
+                setScreen("city");
+                addLog(`🏰 Fast Traveled to ${fastTravelConfirm.name}`);
+                setFastTravelConfirm(null);
+                setFastTravelMode(false);
+                setWorldMapOpen(false);
+              }}>Yes</button>
+              <button style={{ ...S.btn, ...S.btnDanger, padding: "8px 24px", fontSize: 16 }} onClick={() => setFastTravelConfirm(null)}>No</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 
@@ -5565,70 +5703,7 @@ const heroUrl = "hero_sprite.png";
       }}>
         <h2 style={{ ...S.gold, margin: "0 0 16px 0", fontSize: 28, textAlign: "center" }}>✨ Choose a New Ability! ✨</h2>
         
-        {(() => {
-          const tag = (label, color, bg) => (
-            <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 4, fontWeight: 600, background: bg, color, border: `1px solid ${color}44`, whiteSpace: "nowrap" }}>{label}</span>
-          );
-          const effectDesc = (s) => {
-            if (s.effect === "slow")       return "-50% enemy dmg";
-            if (s.effect === "bleed")      return `Bleed ${s.bleedDuration} rounds`;
-            if (s.effect === "burn")       return `Burn ${s.burnDuration} rounds`;
-            if (s.effect === "poison")     return `Poison ${s.poisonDuration} rounds`;
-            if (s.effect === "stun")       return `Stun ${s.stunDuration} rounds`;
-            if (s.effect === "crit")       return "Guaranteed crit ×2";
-            if (s.effect === "defense")    return "+50% Defense 2 rounds";
-            if (s.effect === "heal")       return `Lifesteal ${Math.round((s.healPercent||0)*100)}%`;
-            if (s.effect === "playerHeal") return "Heals you";
-            if (s.effect === "dodge")      return "Stealth 2 rounds";
-            return null;
-          };
-          const renderCard = (ability, type) => {
-            const isSpell = type === "spell";
-            const accent = isSpell ? "#4169E1" : "#ff8800";
-            const bg = isSpell ? "#0066ff11" : "#ff660011";
-            const desc = effectDesc(ability);
-            return (
-              <button
-                key={ability.id}
-                onClick={() => learnAbility(ability.id, type)}
-                style={{
-                  display: "block", width: "100%", padding: "12px 14px", marginBottom: 10, borderRadius: 8,
-                  background: bg, border: `1px solid ${accent}55`, color: "#e8d7c3",
-                  cursor: "pointer", textAlign: "left", transition: "all 0.2s",
-                }}
-                onMouseEnter={e => { e.currentTarget.style.background = `${accent}22`; e.currentTarget.style.boxShadow = `0 0 14px ${accent}44`; }}
-                onMouseLeave={e => { e.currentTarget.style.background = bg; e.currentTarget.style.boxShadow = "none"; }}
-              >
-                <div style={{ fontWeight: 700, fontSize: 16, color: accent, marginBottom: 6 }}>{ability.name}</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: desc ? 6 : 0 }}>
-                  {isSpell
-                    ? tag(`${ability.manaCost} Mana`, "#60a5fa", "#60a5fa11")
-                    : tag(`${Math.round(ability.hpCostPercent * 100)}% HP`, "#f87171", "#f8717111")
-                  }
-                  {ability.dmgRange && ability.dmgRange[1] > 0 && tag(`${ability.dmgRange[0]}–${ability.dmgRange[1]} Dmg`, "#ef4444", "#ef444411")}
-                  {ability.hitCount && tag(`×${ability.hitCount} Hits`, "#fbbf24", "#fbbf2411")}
-                  {desc && tag(desc, "#c084fc", "#c084fc11")}
-                </div>
-              </button>
-            );
-          };
-          return (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-              <div style={{ padding: 12, background: "#0066ff08", borderRadius: 8, border: "1px solid #0066ff33" }}>
-                <h3 style={{ color: "#4169E1", margin: "0 0 12px 0", fontSize: 18 }}>🔮 Spells (Mana)</h3>
-                {abilityChoicePopup?.availableSpells?.length > 0
-                  ? abilityChoicePopup.availableSpells.map(s => renderCard(s, "spell"))
-                  : <div style={{ opacity: 0.5, fontSize: 13 }}>No new spells available</div>}
-              </div>
-              <div style={{ padding: 12, background: "#ff660008", borderRadius: 8, border: "1px solid #ff660033" }}>
-                <h3 style={{ color: "#ff8800", margin: "0 0 12px 0", fontSize: 18 }}>⚡ Specials (HP)</h3>
-                {abilityChoicePopup?.availableSpecials?.length > 0
-                  ? abilityChoicePopup.availableSpecials.map(s => renderCard(s, "special"))
-                  : <div style={{ opacity: 0.5, fontSize: 13 }}>No new specials available</div>}
-              </div>
-            </div>
-          );
-        })()}
+        <AbilityCards abilityChoicePopup={abilityChoicePopup} learnAbility={learnAbility} />
       </div>
     </div>
   );
@@ -5958,19 +6033,7 @@ const heroUrl = "hero_sprite.png";
                     )}
                   </div>
                   {/* Level badge — color relative to player level */}
-                  {(() => {
-                    const diff = enemy.level - level;
-                    const lvColor = diff <= -5 ? "#6b7280"   // deutlich schwächer – grau
-                                  : diff <= -2 ? "#4ade80"   // schwächer – grün
-                                  : diff <=  2 ? "#facc15"   // gleichstark – gelb
-                                  : diff <=  5 ? "#fb923c"   // stärker – orange
-                                               : "#ef4444";  // deutlich stärker – rot
-                    return (
-                      <div style={{ fontSize: 12, fontWeight: 700, color: lvColor, letterSpacing: 1 }}>
-                        Lv.{enemy.level}
-                      </div>
-                    );
-                  })()}
+                  <EnemyLevelBadge enemyLevel={enemy.level} playerLevel={level} />
                   <div style={{ width: "100%", maxWidth: 120 }}>
                     <HealthBar current={enemyHp} max={enemy.hp} pulse />
                   </div>
@@ -5998,37 +6061,7 @@ const heroUrl = "hero_sprite.png";
                 <button onClick={() => setSkillsOpen(prev => !prev)} style={{ ...S.btn, flex: 1, minWidth: 80, ...(skillsOpen ? { borderColor: "#a0c4ff", background: "linear-gradient(180deg, #0e1a3a, #081028)" } : {}), borderColor: (learnedAbilities.spells.length > 0 || learnedAbilities.specials.length > 0) ? "#a0c4ff" : "#999", color: (learnedAbilities.spells.length > 0 || learnedAbilities.specials.length > 0) ? "#a0c4ff" : "#999" }} disabled={enemyHp <= 0 || (learnedAbilities.spells.length === 0 && learnedAbilities.specials.length === 0)}>✨ Skills</button>
                 <button onClick={flee} style={{ ...S.btn, flex: 1, minWidth: 80 }} disabled={enemyHp <= 0}>🏃 Flee</button>
               </div>
-              {combatItemsOpen && enemyHp > 0 && (() => {
-                const consumables = [];
-                const seen = new Map();
-                for (let i = 0; i < inventory.length; i++) {
-                  const item = inventory[i];
-                  if (item.type !== "consumable") continue;
-                  if (seen.has(item.name)) {
-                    seen.get(item.name).count++;
-                  } else {
-                    const entry = { item, idx: i, count: 1 };
-                    seen.set(item.name, entry);
-                    consumables.push(entry);
-                  }
-                }
-                return (
-                  <div style={{ background: "#ffffff06", borderRadius: 8, padding: 10, marginBottom: 12, border: "1px solid #4ade8033" }}>
-                    <div style={{ fontSize: 14, opacity: 0.5, marginBottom: 6 }}>Use an item (costs your turn):</div>
-                    {consumables.length === 0 && <div style={{ fontSize: 15, opacity: 0.4 }}>No consumables available.</div>}
-                    {consumables.map(({ item, idx, count }) => (
-                      <div key={item.name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 0", borderBottom: "1px solid #d4af3711" }}>
-                        <div>
-                          <span style={{ fontSize: 15, fontWeight: 600 }}>{item.name}</span>
-                          {count > 1 && <span style={{ fontSize: 14, fontWeight: 700, ...S.gold, marginLeft: 6 }}>×{count}</span>}
-                          <span style={{ fontSize: 13, opacity: 0.5, marginLeft: 6 }}>{item.effect === "repel" ? `${item.value} steps` : `${item.healPercent ? `+${Math.round(item.healPercent * 100)}% HP` : `+${item.value} HP`}`}</span>
-                        </div>
-                        <button onClick={() => useItemInCombat(item, idx)} style={{ ...S.btn, ...S.btnSuccess, padding: "4px 12px", fontSize: 14 }}>Use</button>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })()}
+              {combatItemsOpen && enemyHp > 0 && <CombatItemsPanel inventory={inventory} useItemInCombat={useItemInCombat} />}
               {/* ✅ NEW: Combined SKILLS (Spells + Specials) */}
               {skillsOpen && enemyHp > 0 && (learnedAbilities.spells.length > 0 || learnedAbilities.specials.length > 0) && (
                 <div style={{ background: "#1a3a5a11", borderRadius: 8, padding: 12, marginBottom: 12, border: "1px solid #4169E133" }}>
@@ -6127,6 +6160,17 @@ const heroUrl = "hero_sprite.png";
               <button onClick={() => setScreen("bulletin")} style={{ ...S.btn, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}><BulletinSVG size={36}/> Bulletin Board</button>
             </div>
 
+            {/* Fast Travel */}
+            <div style={{ padding: "0 12px", marginBottom: 8 }}>
+              <button
+                onClick={() => { setFastTravelMode(true); setWorldMapOpen(true); }}
+                style={{ ...S.btn, width: "100%", display:"flex", alignItems:"center", justifyContent:"center", gap:8, borderColor: "#60a5fa", color: "#60a5fa" }}
+                disabled={visitedCities.size <= 1}
+              >
+                <CastleSVG size={28}/> Fast Travel {visitedCities.size <= 1 ? "(visit more cities)" : `(${visitedCities.size} cities)`}
+              </button>
+            </div>
+
             {/* ✅ Leave City Button - im Content Flow */}
             <div style={{ padding: "0 12px", marginBottom: 20 }}>
               <button onClick={() => { setScreen("world"); setCurrentCity(null); addLog(`Left ${currentCity.name}`); }} style={{ ...S.btn, ...S.btnDanger, width: "100%", display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}><LeaveSVG size={36}/> Leave City</button>
@@ -6218,22 +6262,7 @@ const heroUrl = "hero_sprite.png";
   }
 
   if (screen === "merchant" && currentCity) {
-    // ✅ NEW: Determine item level based on chunk (like blacksmith)
-    const chunk = getChunkTier(currentCity.x, currentCity.y);
-    let itemLevel = 1;  // Fallback
-    
-    if (chunk && chunk.levelRange) {
-      // ✅ NEW: Variiere zwischen den ersten 3 Levels des Chunks
-      const minLevel = chunk.levelRange[0];
-      const maxLevel = Math.min(minLevel + 2, chunk.levelRange[1]);
-      itemLevel = randInt(minLevel, maxLevel);
-    } else if (chunk && chunk.isDynamic) {
-      // For dynamic chunks, use player level
-      itemLevel = Math.max(1, Math.min(50, level));
-    }
-    
-    // ✅ NEW: Generate potions dynamically based on itemLevel
-    const items = generateMerchantPotions(itemLevel);
+    const items = generateMerchantPotions(level);
     return (
       <div style={S.app}>
         {questLogOverlay}
@@ -6611,57 +6640,7 @@ const heroUrl = "hero_sprite.png";
             </div>
             
             {/* ✅ Quest-Warnung: Prüfe ob Quest für diese Höhle existiert */}
-            {(() => {
-              const relatedQuest = quests.find(q => 
-                q.questKind === "chunkBossHunt" && 
-                q.targetChunkX === Math.floor(caveConfirm.x / CHUNK_SIZE) &&
-                q.targetChunkY === Math.floor(caveConfirm.y / CHUNK_SIZE)
-              );
-              
-              if (relatedQuest && !relatedQuest.accepted) {
-                return (
-                  <div style={{ 
-                    background: "#d4af3722", 
-                    borderLeft: "4px solid #d4af37", 
-                    padding: 12, 
-                    borderRadius: 6, 
-                    marginBottom: 16, 
-                    fontSize: 14,
-                    textAlign: "left"
-                  }}>
-                    <div style={{ fontWeight: 600, color: "#d4af37", marginBottom: 4 }}>📜 Quest Available</div>
-                    <div style={{ opacity: 0.8 }}>
-                      A quest awaits in the nearby town:<br/>
-                      <span style={{ color: "#d4af37", fontWeight: 500 }}>"{relatedQuest.title}"</span>
-                    </div>
-                  </div>
-                );
-              }
-              
-              if (relatedQuest && relatedQuest.accepted) {
-                const progress = getQuestProgress(relatedQuest);
-                const target = relatedQuest.targetBosses;
-                return (
-                  <div style={{ 
-                    background: "#4ade8022", 
-                    borderLeft: "4px solid #4ade80", 
-                    padding: 12, 
-                    borderRadius: 6, 
-                    marginBottom: 16, 
-                    fontSize: 14,
-                    textAlign: "left"
-                  }}>
-                    <div style={{ fontWeight: 600, color: "#4ade80", marginBottom: 4 }}>⚔️ Quest Active</div>
-                    <div style={{ opacity: 0.8 }}>
-                      {relatedQuest.title}<br/>
-                      <span style={{ color: "#4ade80" }}>Progress: {progress}/{target}</span>
-                    </div>
-                  </div>
-                );
-              }
-              
-              return null;
-            })()}
+            <CaveQuestBanner quests={quests} caveConfirm={caveConfirm} getQuestProgress={getQuestProgress} />
             
             <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
               <button onClick={() => {
