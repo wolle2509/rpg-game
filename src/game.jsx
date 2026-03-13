@@ -240,24 +240,13 @@ const BOSS_LOOT_NAMES = {
 
 
 // ✅ Get item level from cave key/chunk (must be called after CHUNK_TIERS is defined)
-function getItemLevelFromChunk(caveKeyString, playerLevel = 1) {
-  if (!caveKeyString) return 1; // Fallback
+function getItemLevelFromChunk(caveKeyString) {
+  if (!caveKeyString) return 1;
   const [x, y] = caveKeyString.split(',').map(Number);
-  if (isNaN(x) || isNaN(y)) return 1; // Fallback
-  
-  // This will be called from endCombat where enemy.caveKey = "x,y"
-  // We need to find the chunk tier for this position
-  // Since CHUNK_TIERS is defined globally, we can use it
+  if (isNaN(x) || isNaN(y)) return 1;
   const chunk = getChunkTier(x, y);
-  
-  if (chunk.isDynamic) {
-    return Math.max(1, Math.min(50, playerLevel)); // Clamp 1-50
-  }
-  
-  // ✅ Static chunk: use levelRange[1] (max) - 2 levels
-  const maxLevel = chunk.levelRange[1];
-  const lootLevel = Math.max(1, maxLevel - 2);
-  return Math.min(50, lootLevel);
+  if (!chunk || chunk.isDynamic) return 25;
+  return chunk.levelRange[1];
 }
 
 // ✅ Get available rarity indices based on item level
@@ -409,9 +398,9 @@ function generateBossCaveQuest(chunkX, chunkY, caveIndex, itemLevel, caveKey) {
 function generateBossLoot(chunkLevelRange, biome, seed, isFromBossCave = true) {
   const rng = seededRandom(seed);
   
-  // ✅ SCHRITT 1: Bestimme Equipment itemLevel (random aus chunk range)
-  const [minLevel, maxLevel] = chunkLevelRange;
-  const itemLevel = minLevel + Math.floor(rng() * (maxLevel - minLevel + 1));
+  // Loot itemLevel = max level of region
+  const [, maxLevel] = chunkLevelRange;
+  const itemLevel = maxLevel;
   
   // ✅ SCHRITT 2: Hole verfügbare Rarities (vordefiniert im Code)
   const availableRarityIndices = getAvailableRarityIndices(itemLevel, isFromBossCave);
@@ -822,11 +811,47 @@ const ENEMY_NAMES_BY_DIFFICULTY = {
   Expert: ["Ember Drake", "Brutal Ogre", "Eye Abomination", "Cursed Mummy", "Ice Ogre", "Pyre Tortoise"],
 };
 
-const CITY_NAMES = [ "Eldoria", "Thornwall", "Misthollow", "Ironforge", "Darkwater", "Sunspire",
-  "Ashvale", "Frostpeak", "Goldcrest", "Shadowmere", "Brightkeep", "Stormhaven",
-  "Moonfall", "Ravencrest", "Duskwind", "Starhold", "Flamecrest", "Crystalvale",
-  "Grimwatch", "Silverpine", "Embercross", "Nightshade", "Willowbrook", "Ironhelm",
-  "Dragonrest", "Wyrmgate", "Lichfield", "Doomspire", "Celestia", "Voidreach",
+const CITY_NAMES = [
+  "Ashveil","Ironmoor","Duskhollow","Thornspire","Grimhaven","Stonefell","Nightwatch","Embervale","Frostmere","Shadowkeep",
+  "Coldspire","Ravenmoor","Darkholm","Blightwood","Ashcroft","Ironveil","Doomwatch","Stormgate","Bloodmere","Crystalspire",
+  "Grimstone","Nightfall","Embercroft","Frostwall","Shadowpeak","Coldmere","Ravenspire","Darkveil","Blightmere","Ashpeak",
+  "Ironwatch","Doomspire","Stormveil","Bloodkeep","Crystalgate","Grimveil","Nightmere","Emberpeak","Frosthaven","Shadowwall",
+  "Coldwatch","Ravengate","Darkpeak","Blightwatch","Ashgate","Ironmere","Doomveil","Stormkeep","Bloodwall","Crystalwatch",
+  "Steelhaven","Cindermoor","Wolfgate","Bonecrest","Voidmere","Deepwatch","Hellspire","Blackveil","Silverthorn","Coppermere",
+  "Steelveil","Cinderspire","Wolfmere","Bonewatch","Voidspire","Deepgate","Hellveil","Blackmere","Silvergate","Copperwatch",
+  "Steelgate","Cinderwatch","Wolfspire","Bonegate","Voidwatch","Deepspire","Hellmere","Blackgate","Silvermere","Copperspire",
+  "Wraithwood","Slagmere","Dustfall","Ruinkeep","Hexgate","Tombwall","Pestmere","Ragewatch","Warspire","Scourgeveil",
+  "Wraithspire","Slagwatch","Dustspire","Ruingate","Hexmere","Tombspire","Pestwatch","Ragegate","Warveil","Scourgemere",
+  "Plaguewatch","Grimcrest","Darkroot","Ashwood","Ironcrest","Frostcrest","Nightcrest","Embermere","Shadowcroft","Coldcroft",
+  "Plagueспire","Grimroot","Darkwood","Ashcrest","Ironroot","Frostroot","Nightroot","Embercrest","Shadowroot","Coldroot",
+  "Thornmere","Stonecrest","Grimgate","Blightgate","Doomcrest","Stormcrest","Bloodcrest","Crystalmere","Voidcrest","Deepcrest",
+  "Thorngate","Stonegate","Grimcroft","Blightcroft","Doomcroft","Stormcroft","Bloodcroft","Crystalcroft","Voidcroft","Deepcroft",
+  "Wolfcrest","Bonecroft","Slagcrest","Dustcrest","Ruincrest","Hexcrest","Tombcrest","Pestcrest","Ragecrest","Scourgecrest",
+  "Wolfwood","Bonewood","Slagwood","Dustwood","Ruinwood","Hexwood","Tombwood","Pestwood","Ragewood","Scourgewood",
+  "Mirewatch","Fogspire","Gloomveil","Murkgate","Hazemere","Drearwall","Bleakspire","Greyhollow","Ashhollow","Miregate",
+  "Foggate","Gloomgate","Murkspire","Hazespire","Drearspire","Grimhollow","Bleakgate","Greymere","Ashfen","Mirespire",
+  "Fogmere","Gloomspire","Murkveil","Hazeveil","Drearveil","Grimfen","Bleakveil","Greygate","Ashmarsh","Mirefen",
+  "Fogfen","Gloomfen","Murkfen","Hazefen","Drearfen","Grimmarsh","Bleakfen","Greyfen","Ashblight","Ironfen",
+  "Stonefen","Thornfen","Coldfen","Frostfen","Nightfen","Emberfen","Shadowfen","Doomfen","Stormfen","Ironmarsh",
+  "Stonemarsh","Thornmarsh","Coldmarsh","Frostmarsh","Nightmarsh","Embermarsh","Shadowmarsh","Doommarsh","Stormmarsh","Bloodfen",
+  "Crystalfen","Wolffen","Bonefen","Slagfen","Dustfen","Ruinfen","Hexfen","Tombfen","Pestfen","Bloodmarsh",
+  "Crystalmarsh","Wolfmarsh","Bonemarsh","Slagmarsh","Dustmarsh","Ruinmarsh","Hexmarsh","Tombmarsh","Pestmarsh","Grimbarrow",
+  "Darkbarrow","Ashbarrow","Ironbarrow","Coldbarrow","Nightbarrow","Frostbarrow","Emberbarrow","Shadowbarrow","Stonebarrow","Thornbarrow",
+  "Voidbarrow","Bloodbarrow","Wolfbarrow","Bonebarrow","Slagbarrow","Dustbarrow","Ruinbarrow","Hexbarrow","Tombbarrow","Wraithbarrow",
+  "Plaguewarden","Deathwatch","Hellwarden","Scourgewarden","Ragefell","Warfell","Crimsonspire","Obsidianmere","Ebonwatch","Wraithwarden",
+  "Plaguefell","Deathspire","Hellfall","Scourgefell","Ragefall","Warfall","Crimsongate","Obsidiangate","Ebongate","Ashenfall",
+  "Ironfall","Thornfall","Coldfall","Frostfall","Emberfall","Shadowfall","Stormfall","Voidfall","Wolffall","Bonefall",
+  "Slagfall","Dustfall","Ruinfall","Hexfall","Tombfall","Pestfall","Scourgefall","Bleakwall","Greywall","Murkwall",
+  "Hazwall","Drearwall","Fogwall","Gloomwall","Mirewall","Wraithwall","Plaguewall","Bleakhaven","Greyhaven","Murkhaven",
+  "Hazhaven","Drearhaven","Foghaven","Gloomhaven","Mirehaven","Wraithhaven","Plaguehaven","Bleakmoor","Greymoor","Murkmoor",
+  "Hazmoor","Drearmoor","Fogmoor","Gloommoor","Miremoor","Wraithmoor","Plaguemoor","Stonehaven","Ironhaven","Thorhaven",
+  "Coldhaven","Nighthaven","Emberhaven","Shadowhaven","Doomhaven","Ashhollow","Ironhollow","Thornhollow","Coldhollow","Frosthollow",
+  "Nighthollow","Emberhollow","Shadowhollow","Doomhollow","Stormhollow","Voidhollow","Bloodhollow","Wolfhollow","Bonehollow","Slaghollow",
+  "Dusthollow","Ruinhollow","Hexhollow","Tombhollow","Pesthollow","Grimcliff","Darkcliff","Ironcliff","Thorncliff","Coldcliff",
+  "Frostcliff","Nightcliff","Embercliff","Shadowcliff","Stonecliff","Voidcliff","Bloodcliff","Wolfcliff","Bonecliff","Slagcliff",
+  "Dustcliff","Ruincliff","Hexcliff","Tombcliff","Pestcliff","Ashholt","Ironholt","Thornholt","Coldholt","Frostholt",
+  "Nightholt","Emberholt","Shadowholt","Doomholt","Stormholt","Voidholt","Bloodholt","Wolfholt","Boneholt","Slagholt",
+  "Dustholt","Ruinholt","Hexholt","Tombholt","Pestholt","Scourgecliff","Rageсliff","Warcliff","Crimsoncrest","Obsidiancrest",
 ];
 
 // ============================================================
@@ -1217,7 +1242,7 @@ function generateChunkCities(chunkX, chunkY, seed, existingCities) {
       const totalIdx = Object.keys(existingCities).length + Object.keys(cities).length;
       const diff = getDifficulty(pos.x, pos.y);
       cities[key] = {
-        name: CITY_NAMES[totalIdx % CITY_NAMES.length] + (totalIdx >= CITY_NAMES.length ? ` ${Math.floor(totalIdx / CITY_NAMES.length) + 1}` : ""),
+        name: CITY_NAMES[totalIdx % CITY_NAMES.length],
         x: pos.x, y: pos.y,
         difficulty: diff.tier,   // ← tier string ("Beginner"…"Expert") for shop/quest keys
         itemLevel: diff.itemLevel, // ← numeric level for scaling
@@ -1279,29 +1304,26 @@ function applyBiomeMultiplier(stats, biome) {
   };
 }
 
-function generateRegionCaves(regionId, seed, cities, existingCaves) {
+function generateRegionCaves(regionId, seed, cities) {
   const region = CHUNK_TIERS.find(c => c.id === regionId);
   if (!region) return [];
-  
+
   const rng = seededRandom(seed + 88888 + regionId * 5551);
-  const x0 = region.xMin;
-  const y0 = region.yMin;
-  const x1 = region.xMax;
-  const y1 = region.yMax;
-  const step = Math.max(1, Math.floor((x1 - x0) / 16));  // ✅ Scan region bounds, not chunk
+  const { xMin: x0, yMin: y0, xMax: x1, yMax: y1 } = region;
+  const itemLevel = region.levelRange ? region.levelRange[1] : 25;
   const cityList = Object.keys(cities).map(k => { const [x,y] = k.split(",").map(Number); return {x,y}; });
 
+  const placedKeys = new Set();
   const caves = [];
-  
-  // Helper function to find a valid cave position within REGION
-  const findValidCavePosition = (existingKeys) => {
-    const maxAttempts = 200;
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+
+  for (let i = 0; i < 5; i++) {
+    let pick = null;
+    for (let attempt = 0; attempt < 300 && !pick; attempt++) {
       const x = Math.floor(x0 + rng() * (x1 - x0));
       const y = Math.floor(y0 + rng() * (y1 - y0));
       if (x < 4 || y < 4) continue;
       const key = `${x},${y}`;
-      if (existingCaves[key] || existingKeys.has(key)) continue;
+      if (placedKeys.has(key)) continue;
       let nearCity = false;
       for (const c of cityList) {
         if (Math.abs(c.x - x) < 15 && Math.abs(c.y - y) < 15) { nearCity = true; break; }
@@ -1309,33 +1331,21 @@ function generateRegionCaves(regionId, seed, cities, existingCaves) {
       if (nearCity) continue;
       const biome = getBiome(x, y, seed);
       if (!BIOME_BOSSES[biome]) continue;
-      return { x, y, biome };
+      pick = { x, y, biome };
     }
-    return null;
-  };
-  
-  // Helper function to create cave object
-  const createCave = (pick, caveIndex = 0) => {
+    if (!pick) continue;
+
+    placedKeys.add(`${pick.x},${pick.y}`);
     const key = `${pick.x},${pick.y}`;
-    const biome = pick.biome;
-    const boss = BIOME_BOSSES[biome];
-    
-    // ✅ Get item level for this REGION (use max level of region)
-    let itemLevel = 1;
-    if (region && region.levelRange) {
-      itemLevel = region.levelRange[1]; // ✅ Use MAX level of region
-    } else if (region && region.isDynamic) {
-      itemLevel = 25;  // Default for dynamic
-    }
-    
-    // ✅ Use scaled boss stats based on item level
+    const boss = BIOME_BOSSES[pick.biome];
     const baseStats = getScaledBossStats(itemLevel);
-    const scaledStats = applyBiomeMultiplier(baseStats, biome);
-    
-    return {
+    const scaledStats = applyBiomeMultiplier(baseStats, pick.biome);
+    const lootSeed = Math.floor(rng() * 99999);
+
+    caves.push({
       key,
       cave: {
-        x: pick.x, y: pick.y, biome: biome, 
+        x: pick.x, y: pick.y, biome: pick.biome,
         difficulty: `Level ${itemLevel}`,
         itemLevel,
         bossName: boss.name, bossSprite: boss.sprite,
@@ -1345,57 +1355,31 @@ function generateRegionCaves(regionId, seed, cities, existingCaves) {
         bossGold: scaledStats.gold,
         bossDmg: scaledStats.dmg,
         bossDef: scaledStats.def,
-        lootSeed: Math.floor(rng() * 99999),
+        lootSeed,
         isBossCave: true,
-        questId: `boss_cave_${regionId}_${caveIndex}`,  // ✅ Quest link uses regionId
+        questId: `boss_cave_${regionId}_${i}`,
       }
-    };
-  };
-  
-  // ✅ Generate exactly 10 caves per REGION (not per chunk!)
-  const cavesToGenerate = 10;
-  const placedKeys = new Set();
-
-  for (let i = 0; i < cavesToGenerate; i++) {
-    const pick = findValidCavePosition(placedKeys);
-    if (pick) {
-      placedKeys.add(`${pick.x},${pick.y}`);
-      caves.push(createCave(pick, i));
-    }
+    });
   }
-  
-  return caves;  // ✅ Return array of caves for this region
+
+  return caves;
 }
 
-// ============================================================
-// CHUNK CAVES (DEPRECATED - kept for compatibility)
-// ============================================================
-function generateChunkCaves(chunkX, chunkY, seed, cities, existingCaves) {
-  // ✅ NEW: This function now delegates to region-based generation
-  // Find which region this chunk belongs to and generate caves for that region only once
-  const chunkCenterX = chunkX * CHUNK_SIZE + CHUNK_SIZE/2;
-  const chunkCenterY = chunkY * CHUNK_SIZE + CHUNK_SIZE/2;
+function generateChunkCaves(chunkX, chunkY, seed, cities) {
+  const chunkCenterX = chunkX * CHUNK_SIZE + CHUNK_SIZE / 2;
+  const chunkCenterY = chunkY * CHUNK_SIZE + CHUNK_SIZE / 2;
   const chunkRegion = getChunkTier(chunkCenterX, chunkCenterY);
-  
   if (!chunkRegion) return [];
-  
-  // ✅ Generate caves for the REGION (not the chunk)
-  // But only return caves that fall within THIS chunk's bounds (for compatibility)
+
   const x0 = chunkX * CHUNK_SIZE;
   const y0 = chunkY * CHUNK_SIZE;
   const x1 = Math.min(x0 + CHUNK_SIZE, WORLD_SIZE - 4);
   const y1 = Math.min(y0 + CHUNK_SIZE, WORLD_SIZE - 4);
-  
-  const allRegionCaves = generateRegionCaves(chunkRegion.id, seed, cities, existingCaves);
-  
-  // ✅ Filter: Only return caves within this chunk's bounds
-  const cavesInThisChunk = allRegionCaves.filter(caveObj => {
-    const cx = caveObj.cave.x;
-    const cy = caveObj.cave.y;
-    return cx >= x0 && cx < x1 && cy >= y0 && cy < y1;
-  });
-  
-  return cavesInThisChunk;
+
+  return generateRegionCaves(chunkRegion.id, seed, cities).filter(caveObj =>
+    caveObj.cave.x >= x0 && caveObj.cave.x < x1 &&
+    caveObj.cave.y >= y0 && caveObj.cave.y < y1
+  );
 }
 
 // ============================================================
@@ -1419,7 +1403,7 @@ function useChunkWorld(worldSeed, playerPos) {
       if (Object.keys(newCities).length === 0) return prev;
       const merged = { ...prev, ...newCities };
       // Generate caves for this chunk with merged cities (now returns array)
-      const cavesResult = generateChunkCaves(cx, cy, worldSeed, merged, {});
+      const cavesResult = generateChunkCaves(cx, cy, worldSeed, merged);
       if (cavesResult && cavesResult.length > 0) {
         setCaves(cavePrev => {
           const updated = { ...cavePrev };
@@ -1861,12 +1845,8 @@ function HeroImage({ size = 110, heroUrl }) {
     const ctx = canvas.getContext("2d");
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
-    const aspectRatio = source.width / source.height;
-    let drawWidth = px, drawHeight = px, offsetX = 0, offsetY = 0;
-    if (aspectRatio > 1) { drawHeight = px / aspectRatio; offsetY = (px - drawHeight) / 2; }
-    else { drawWidth = px * aspectRatio; offsetX = (px - drawWidth) / 2; }
     ctx.clearRect(0, 0, px, px);
-    ctx.drawImage(source, 0, 0, source.width, source.height, offsetX, offsetY, drawWidth, drawHeight);
+    ctx.drawImage(source, 0, 0, source.width, source.height, 0, 0, px, px);
   };
 
   useEffect(() => {
@@ -5591,8 +5571,14 @@ const heroUrl = "hero_sprite.png";
             boxShadow: "0 2px 8px #000a",
           }}>
             {mapTooltip.type === "cave"
-              ? `🕳️ ${mapTooltip.name} — Lv.${mapTooltip.level}`
-              : `🏰 ${mapTooltip.name}`}
+              ? <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  <span style={{ fontSize: 11, opacity: 0.6, fontWeight: 400 }}>Cave</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 5 }}>🕳️ {mapTooltip.name} — Lv.{mapTooltip.level}</span>
+                </span>
+              : <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  <span style={{ fontSize: 11, opacity: 0.6, fontWeight: 400 }}>City</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 5 }}><CastleSVG size={16} />{mapTooltip.name}</span>
+                </span>}
           </div>
         )}
         <div style={{ display: "flex", gap: 16, justifyContent: "center", marginTop: 10, fontSize: 15, opacity: 0.7, flexWrap: "wrap" }}>
@@ -5604,6 +5590,27 @@ const heroUrl = "hero_sprite.png";
           <span style={S.badge(difficulty.color)}>{difficulty.name}</span>
           <span style={{ opacity: 0.5 }}>Scroll to zoom</span>
         </div>
+        {fastTravelMode && (() => {
+          const visitedList = Object.values(cities)
+            .filter(c => visitedCities.has(c.name) && c.name !== currentCity?.name)
+            .sort((a, b) => a.name.localeCompare(b.name));
+          return (
+            <div style={{ marginTop: 14, borderTop: "1px solid #d4af3733", paddingTop: 12 }}>
+              <div style={{ fontSize: 13, color: "#60a5fa", fontWeight: 600, marginBottom: 8 }}>
+                Visited Cities — click to travel
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 160, overflowY: "auto" }}>
+                {visitedList.map(c => (
+                  <button key={c.name} onClick={() => setFastTravelConfirm({ name: c.name, x: c.x, y: c.y })}
+                    style={{ ...S.btn, padding: "4px 10px", fontSize: 13, display: "flex", alignItems: "center", gap: 5, borderColor: "#60a5fa55", color: "#60a5fa" }}>
+                    <CastleSVG size={13} />{c.name}
+                  </button>
+                ))}
+                {visitedList.length === 0 && <span style={{ fontSize: 13, opacity: 0.4 }}>No other cities visited yet.</span>}
+              </div>
+            </div>
+          );
+        })()}
         <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 6, fontSize: 14, opacity: 0.5, flexWrap: "wrap" }}>
           {Object.entries(BIOME_COLORS).map(([name, color]) => (
             <span key={name} style={{ display: "flex", alignItems: "center", gap: 3 }}>
@@ -6136,7 +6143,7 @@ const heroUrl = "hero_sprite.png";
                 style={{ ...S.btn, width: "100%", display:"flex", alignItems:"center", justifyContent:"center", gap:8, borderColor: "#60a5fa", color: "#60a5fa" }}
                 disabled={visitedCities.size <= 1}
               >
-                <CastleSVG size={28}/> Fast Travel {visitedCities.size <= 1 ? "(visit more cities)" : `(${visitedCities.size} cities)`}
+                <CastleSVG size={28}/> Fast Travel
               </button>
             </div>
 
@@ -6575,13 +6582,14 @@ const heroUrl = "hero_sprite.png";
           <div style={{ ...S.panel, flex: 1, minWidth: 160, maxHeight: VIEW_SIZE * (TILE_PX + 1) + 8, overflowY: "auto", marginBottom: 0 }}>
             <div style={{ fontSize: 17, opacity: 0.5, marginBottom: 6 }}>Event Log</div>
             {log.map((msg, i) => {
-              // ✅ Parse **text** to bold
-              const parts = msg.split(/(\*\*[^*]+\*\*)/);
+              // Parse **text** to bold, and 🏰 to CastleSVG
+              const parts = msg.split(/(\*\*[^*]+\*\*|🏰)/);
               return (
-                <div key={i} style={{ fontSize: 21, padding: "5px 0", opacity: 0.8, borderBottom: "1px solid #d4af3708" }}>
+                <div key={i} style={{ fontSize: 21, padding: "5px 0", opacity: 0.8, borderBottom: "1px solid #d4af3708", display: "flex", alignItems: "center", flexWrap: "wrap", gap: 2 }}>
                   {parts.map((part, idx) => {
+                    if (part === "🏰") return <CastleSVG key={idx} size={18} />;
                     if (part.startsWith("**") && part.endsWith("**")) {
-                      return <span key={idx} style={{ fontWeight: 700, color: "#d4af37" }}>{part.slice(2, -2)}</span>;  // ✅ Bold + Gold color
+                      return <span key={idx} style={{ fontWeight: 700, color: "#d4af37" }}>{part.slice(2, -2)}</span>;
                     }
                     return <span key={idx}>{part}</span>;
                   })}
