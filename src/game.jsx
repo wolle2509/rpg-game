@@ -1851,64 +1851,34 @@ function HeroImage({ size = 110, heroUrl }) {
   const canvasRef = useRef(null);
   const [loaded, setLoaded] = useState(!!_heroCanvas);
 
+  const drawHero = (source) => {
+    if (!canvasRef.current) return;
+    const dpr = window.devicePixelRatio || 1;
+    const px = Math.round(size * dpr);
+    const canvas = canvasRef.current;
+    canvas.width = px;
+    canvas.height = px;
+    const ctx = canvas.getContext("2d");
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    const aspectRatio = source.width / source.height;
+    let drawWidth = px, drawHeight = px, offsetX = 0, offsetY = 0;
+    if (aspectRatio > 1) { drawHeight = px / aspectRatio; offsetY = (px - drawHeight) / 2; }
+    else { drawWidth = px * aspectRatio; offsetX = (px - drawWidth) / 2; }
+    ctx.clearRect(0, 0, px, px);
+    ctx.drawImage(source, 0, 0, source.width, source.height, offsetX, offsetY, drawWidth, drawHeight);
+  };
+
   useEffect(() => {
-    loadHeroSprite(heroUrl, (sheet) => {
-      setLoaded(true);
-      if (!canvasRef.current) return;
-      const ctx = canvasRef.current.getContext("2d");
-      
-      // Berechne Aspect Ratio des Original-Bildes
-      const aspectRatio = sheet.width / sheet.height;
-      let drawWidth = size;
-      let drawHeight = size;
-      let offsetX = 0;
-      let offsetY = 0;
-      
-      if (aspectRatio > 1) {
-        // Breiter als hoch
-        drawHeight = size / aspectRatio;
-        offsetY = (size - drawHeight) / 2;
-      } else {
-        // Höher als breit
-        drawWidth = size * aspectRatio;
-        offsetX = (size - drawWidth) / 2;
-      }
-      
-      canvasRef.current.width = size;
-      canvasRef.current.height = size;
-      ctx.clearRect(0, 0, size, size);
-      ctx.drawImage(sheet, 0, 0, sheet.width, sheet.height, offsetX, offsetY, drawWidth, drawHeight);
-    });
+    loadHeroSprite(heroUrl, (sheet) => { setLoaded(true); drawHero(sheet); });
   }, [size, heroUrl]);
 
   useEffect(() => {
-    if (!loaded || !_heroCanvas || !canvasRef.current) return;
-    const ctx = canvasRef.current.getContext("2d");
-    
-    // Berechne Aspect Ratio des Original-Bildes
-    const aspectRatio = _heroCanvas.width / _heroCanvas.height;
-    let drawWidth = size;
-    let drawHeight = size;
-    let offsetX = 0;
-    let offsetY = 0;
-    
-    if (aspectRatio > 1) {
-      // Breiter als hoch
-      drawHeight = size / aspectRatio;
-      offsetY = (size - drawHeight) / 2;
-    } else {
-      // Höher als breit
-      drawWidth = size * aspectRatio;
-      offsetX = (size - drawWidth) / 2;
-    }
-    
-    canvasRef.current.width = size;
-    canvasRef.current.height = size;
-    ctx.clearRect(0, 0, size, size);
-    ctx.drawImage(_heroCanvas, 0, 0, _heroCanvas.width, _heroCanvas.height, offsetX, offsetY, drawWidth, drawHeight);
+    if (!loaded || !_heroCanvas) return;
+    drawHero(_heroCanvas);
   }, [loaded, size]);
 
-  return <canvas ref={canvasRef} width={size} height={size} style={{ width: size, height: size }} />;
+  return <canvas ref={canvasRef} style={{ width: size, height: size }} />;
 }
 
 // Spritesheet loader: loads image, removes black background, caches as canvas
@@ -1949,34 +1919,33 @@ function SpriteImage({ spriteKey, size = 80, spriteSheetUrl }) {
   const canvasRef = useRef(null);
   const [loaded, setLoaded] = useState(!!_spriteCanvas);
 
+  const drawSprite = (source) => {
+    if (!canvasRef.current) return;
+    const pos = SPRITE_MAP[spriteKey];
+    if (!pos) return;
+    const { x, y, w, h } = pos;
+    const dpr = window.devicePixelRatio || 1;
+    const px = Math.round(size * dpr);
+    const canvas = canvasRef.current;
+    canvas.width = px;
+    canvas.height = px;
+    const ctx = canvas.getContext("2d");
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.clearRect(0, 0, px, px);
+    ctx.drawImage(source, x, y, w, h, 0, 0, px, px);
+  };
+
   useEffect(() => {
-    loadSpritesheet(spriteSheetUrl, (sheet) => {
-      setLoaded(true);
-      if (!canvasRef.current) return;
-      const ctx = canvasRef.current.getContext("2d");
-      const pos = SPRITE_MAP[spriteKey];
-      if (!pos) return;
-      const { x, y, w, h } = pos;  // ← Pixel positions!
-      canvasRef.current.width = size;
-      canvasRef.current.height = size;
-      ctx.clearRect(0, 0, size, size);
-      ctx.drawImage(sheet, x, y, w, h, 0, 0, size, size);  // ← Use x, y, w, h directly
-    });
+    loadSpritesheet(spriteSheetUrl, (sheet) => { setLoaded(true); drawSprite(sheet); });
   }, [spriteKey, size, spriteSheetUrl]);
 
   useEffect(() => {
-    if (!loaded || !_spriteCanvas || !canvasRef.current) return;
-    const ctx = canvasRef.current.getContext("2d");
-    const pos = SPRITE_MAP[spriteKey];
-    if (!pos) return;
-    const { x, y, w, h } = pos;  // ← Pixel positions!
-    canvasRef.current.width = size;
-    canvasRef.current.height = size;
-    ctx.clearRect(0, 0, size, size);
-    ctx.drawImage(_spriteCanvas, x, y, w, h, 0, 0, size, size);  // ← Use x, y, w, h directly
+    if (!loaded || !_spriteCanvas) return;
+    drawSprite(_spriteCanvas);
   }, [loaded, spriteKey, size]);
 
-  return <canvas ref={canvasRef} width={size} height={size} style={{ width: size, height: size, imageRendering: "pixelated" }} />;
+  return <canvas ref={canvasRef} style={{ width: size, height: size }} />;
 }
 
 function EquipSlot({ slot, item, icon, svgIcon }) {
