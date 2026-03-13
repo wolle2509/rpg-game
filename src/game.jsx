@@ -5812,18 +5812,18 @@ const heroUrl = "hero_sprite.png";
                 display: "flex", justifyContent: "space-around", alignItems: "center",
                 background: "radial-gradient(ellipse at center, #1a1a2e 0%, #0d0d1a 100%)",
                 borderRadius: 12, padding: "20px 10px", marginBottom: 12,
-                border: "1px solid #d4af3722", position: "relative", minHeight: 180,
+                border: "1px solid #d4af3722", position: "relative", minHeight: 260,
               }}>
                 {/* Player */}
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, flex: 1 }}>
                   <div style={{
-                    width: 120, height: 120, borderRadius: 12,
+                    width: 180, height: 180, borderRadius: 16,
                     background: "radial-gradient(circle, #1a1a2e, #0a0a12)",
                     display: "flex", alignItems: "center", justifyContent: "center",
                     boxShadow: playerHit ? "0 0 20px #4ade80aa" : playerDodge ? "0 0 20px #60a5faaa" : "0 0 8px #0008",
                     transition: "box-shadow 0.3s", overflow: "hidden",
                   }}>
-                    <HeroImage size={110} heroUrl={heroUrl} />
+                    <HeroImage size={165} heroUrl={heroUrl} />
                   </div>
                   {/* ✅ NEW: Player Name + Status Badge */}
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
@@ -5908,7 +5908,7 @@ const heroUrl = "hero_sprite.png";
                       </div>
                     )}
                   </div>
-                  <div style={{ width: "100%", maxWidth: 120 }}>
+                  <div style={{ width: "100%", maxWidth: 180 }}>
                     <HealthBar current={hp} max={stats.maxHp} pulse />
                   </div>
                 </div>
@@ -5919,13 +5919,13 @@ const heroUrl = "hero_sprite.png";
                 {/* Enemy with sprite */}
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, flex: 1 }}>
                   <div style={{
-                    width: 120, height: 120, borderRadius: 12,
+                    width: 180, height: 180, borderRadius: 16,
                     background: "radial-gradient(circle, #1a1a2e, #0a0a12)",
                     display: "flex", alignItems: "center", justifyContent: "center",
                     boxShadow: enemyHit ? `0 0 20px ${enemy.isBoss ? "#ff8000aa" : "#ef4444aa"}` : "0 0 8px #0008",
                     transition: "box-shadow 0.3s", overflow: "hidden",
                   }}>
-                    <SpriteImage spriteKey={spriteKey} size={110} spriteSheetUrl={spriteSheetUrl} />
+                    <SpriteImage spriteKey={spriteKey} size={165} spriteSheetUrl={spriteSheetUrl} />
                   </div>
                   {/* ✅ NEW: Enemy Name + Status Badge */}
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
