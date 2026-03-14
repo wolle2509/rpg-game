@@ -858,6 +858,34 @@ const CITY_NAMES = [
 // UTILITY FUNCTIONS
 // ============================================================
 
+// Blend biome tile color with neighbours for soft transitions
+function hexToRgb(hex) {
+  const h = hex.replace('#','');
+  return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)];
+}
+function rgbToHex(r,g,b) {
+  return '#' + [r,g,b].map(v => Math.round(Math.max(0,Math.min(255,v))).toString(16).padStart(2,'0')).join('');
+}
+function blendBiomeColor(tx, ty, worldSeed) {
+  const center = BIOME_COLORS[getBiome(tx, ty, worldSeed)] || '#333';
+  const neighbors = [
+    [tx-1,ty],[tx+1,ty],[tx,ty-1],[tx,ty+1],
+    [tx-1,ty-1],[tx+1,ty-1],[tx-1,ty+1],[tx+1,ty+1],
+  ];
+  const weights = [0.5, 0.5, 0.5, 0.5, 0.25, 0.25, 0.25, 0.25];
+  let [cr,cg,cb] = hexToRgb(center);
+  let totalW = 1.0;
+  neighbors.forEach(([nx,ny], i) => {
+    if (nx < 0 || ny < 0 || nx >= WORLD_SIZE || ny >= WORLD_SIZE) return;
+    const nc = BIOME_COLORS[getBiome(nx, ny, worldSeed)] || '#333';
+    const [nr,ng,nb] = hexToRgb(nc);
+    const w = weights[i];
+    cr += nr * w; cg += ng * w; cb += nb * w;
+    totalW += w;
+  });
+  return rgbToHex(cr/totalW, cg/totalW, cb/totalW);
+}
+
 // Tree placement: deterministic per tile using world seed
 // Each cell has 6 trees, none within 4 tiles of a city
 const TREE_CELL = 20;
@@ -1290,13 +1318,15 @@ function generateChunkCities(chunkX, chunkY, seed, existingCities) {
     }
     
     if (!tooClose) {
-      const totalIdx = Object.keys(existingCities).length + Object.keys(cities).length;
       const diff = getDifficulty(pos.x, pos.y);
+      // Deterministic name from coordinates — stable across reloads
+      const nameHash = Math.abs((pos.x * 374761393 + pos.y * 668265263 + seed * 2246822519) >>> 0);
+      const nameIdx = nameHash % CITY_NAMES.length;
       cities[key] = {
-        name: CITY_NAMES[totalIdx % CITY_NAMES.length],
+        name: CITY_NAMES[nameIdx],
         x: pos.x, y: pos.y,
-        difficulty: diff.tier,   // ← tier string ("Beginner"…"Expert") for shop/quest keys
-        itemLevel: diff.itemLevel, // ← numeric level for scaling
+        difficulty: diff.tier,
+        itemLevel: diff.itemLevel,
       };
     }
   }
@@ -2853,7 +2883,7 @@ function AbilityCards({ abilityChoicePopup, learnAbility }) {
 function EnemyLevelBadge({ enemyLevel, playerLevel }) {
   const diff = enemyLevel - playerLevel;
   const lvColor = diff <= -5 ? "#6b7280" : diff <= -2 ? "#3aaa60" : diff <= 2 ? "#facc15" : diff <= 5 ? "#fb923c" : "#c04848";
-  return <div style={{ fontSize: 12, fontWeight: 700, color: lvColor, letterSpacing: 1 }}>Lv.{enemyLevel}</div>;
+  return <div style={{ fontSize: 15, fontWeight: 700, color: lvColor, letterSpacing: 1 }}>Lv.{enemyLevel}</div>;
 }
 
 function CombatItemsPanel({ inventory, useItemInCombat }) {
@@ -3534,10 +3564,11 @@ const heroUrl = "hero_sprite.png";
       }
       
       if (q.questKind === "chunkBossHunt" && enemy.isBoss && enemy.caveKey) {
-        // ✅ Changed: Accept ANY boss from this region, not specific bosses!
-        // Boss cave key format: "chunkX,chunkY" - just check if it matches the target chunk
-        const bossBelongsToChunk = enemy.caveKey.startsWith(`${q.targetChunkX},${q.targetChunkY}`);
-        if (bossBelongsToChunk && (q.bossKillCount || 0) < q.targetBosses) {
+        // Any boss from the same region counts
+        const [caveWx, caveWy] = enemy.caveKey.split(",").map(Number);
+        const caveRegion = getChunkTier(caveWx, caveWy);
+        const questRegion = getChunkTier(q.targetChunkX * CHUNK_SIZE + CHUNK_SIZE / 2, q.targetChunkY * CHUNK_SIZE + CHUNK_SIZE / 2);
+        if (caveRegion && questRegion && caveRegion.id === questRegion.id && (q.bossKillCount || 0) < q.targetBosses) {
           return { ...q, bossKillCount: (q.bossKillCount || 0) + 1 };
         }
       }
@@ -4923,6 +4954,7 @@ const heroUrl = "hero_sprite.png";
         const isDefeatedCave = caves[cityKey] && defeatedBosses.has(cityKey);
         const tileBiome = isValid ? getBiome(tx, ty, worldSeed) : "void";
         const tileDiff = isValid ? getDifficulty(tx, ty) : null;
+        const tileColor = isValid ? blendBiomeColor(tx, ty, worldSeed) : "#050810";
 
         tiles.push(
           <div
@@ -4930,7 +4962,7 @@ const heroUrl = "hero_sprite.png";
             onClick={() => isAdjacent && isValid && move(dx, dy)}
             style={{
               width: TILE_PX, height: TILE_PX,
-              background: isValid ? (isCave ? "#c0484855" : BIOME_COLORS[tileBiome] + "cc") : "#050810",
+              background: isValid ? (isCave ? "#c0484855" : tileColor + "cc") : "#050810",
               border: isPlayer ? "1px solid #b8962a" : isAdjacent ? "1px solid #ffffff18" : "1px solid transparent",
               display: "flex", alignItems: "center", justifyContent: "center",
               fontSize: isPlayer || isCave ? 18 : 13,
@@ -5987,9 +6019,9 @@ const heroUrl = "hero_sprite.png";
                   </div>
                   {/* ✅ NEW: Player Name + Status Badge */}
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                    <div style={{ fontWeight: 700, fontSize: 15 }}>{playerName}</div>
+                    <div style={{ fontWeight: 700, fontSize: 18 }}>{playerName}</div>
                     {/* Level badge — color always white for player */}
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "#facc15", letterSpacing: 1 }}>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: "#facc15", letterSpacing: 1 }}>
                       Lv.{level}
                     </div>
                     {playerStatus.type && playerStatus.duration > 0 && (
@@ -6089,7 +6121,7 @@ const heroUrl = "hero_sprite.png";
                   </div>
                   {/* ✅ NEW: Enemy Name + Status Badge */}
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <div style={{ fontWeight: 700, fontSize: 15, color: enemy.isBoss ? "#ff8000" : "#c04848" }}>
+                    <div style={{ fontWeight: 700, fontSize: 18, color: enemy.isBoss ? "#ff8000" : "#c04848" }}>
                       {enemy.isBoss ? "👑 " : ""}{enemy.name}
                     </div>
                     {enemyStatus.type && enemyStatus.duration > 0 && (
@@ -6170,7 +6202,7 @@ const heroUrl = "hero_sprite.png";
                   </div>
                   {/* Level badge — color relative to player level */}
                   <EnemyLevelBadge enemyLevel={enemy.level} playerLevel={level} />
-                  <div style={{ width: "100%", maxWidth: 120 }}>
+                  <div style={{ width: "100%", maxWidth: 180 }}>
                     <HealthBar current={enemyHp} max={enemy.hp} pulse />
                   </div>
 
