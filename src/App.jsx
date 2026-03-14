@@ -10,11 +10,11 @@ const TILE_PX = 40;
 const INVENTORY_CAPACITY = 20; // max unique item stacks
 
 const BIOME_COLORS = {
-  ocean: "#3a6a8a", coast: "#6aaa8a", river: "#4a8aaa", lake: "#3a7a9a", swamp: "#6a7a4a",
-  desert: "#c4a060", savanna: "#b0a050", grassland: "#7aaa55",
-  forest: "#3a6a30", jungle: "#2a5828",
-  tundra: "#8a9898", mountain: "#8a6a5a",
-  volcanic: "#8a3828", glacier: "#b0c8d8",
+  ocean:     "#1a4a6e", coast:    "#2e7d5e", river:    "#2a6d9e", lake:     "#1e6080",
+  swamp:     "#3d5c2a", desert:   "#c8943a", savanna:  "#a89040",
+  grassland: "#5a9e3a", forest:   "#2a5a22", jungle:   "#1a4a18",
+  tundra:    "#7a8e94", mountain: "#7a6050",
+  volcanic:  "#7a2818", glacier:  "#a8c4d8",
 };
 const BIOME_EMOJI = {
   ocean: "🌊", coast: "🏖️", river: "💧", lake: "🏞️", swamp: "🪵",
@@ -43,7 +43,7 @@ const CHUNK_TIERS = [
   
   // 4x4 Raster - Row 3 (Lower Middle)
   { id: 9, isDynamic: true, xMin: 40, xMax: 170, yMin: 280, yMax: 410, name: "Mystic Sanctum" },
-  { id: 10, levelRange: [1, 5], xMin: 170, xMax: 300, yMin: 280, yMax: 410, name: "Starter Plains" },
+  { id: 10, levelRange: [1, 5], xMin: 170, xMax: 300, yMin: 280, yMax: 410, name: "Midland Plains" },
   { id: 11, isDynamic: true, xMin: 300, xMax: 430, yMin: 280, yMax: 410, name: "Twilight Forest" },
   { id: 12, levelRange: [46, 50], xMin: 430, xMax: 512, yMin: 280, yMax: 410, name: "Obsidian Peaks" },
   
@@ -858,6 +858,54 @@ const CITY_NAMES = [
 // UTILITY FUNCTIONS
 // ============================================================
 
+// Tree placement: deterministic per tile using world seed
+// Each cell has 6 trees, none within 4 tiles of a city
+const TREE_CELL = 20;
+function tileHasTree(tx, ty, worldSeed, cities) {
+  const cellX = Math.floor(tx / TREE_CELL);
+  const cellY = Math.floor(ty / TREE_CELL);
+  const h = Math.abs((cellX * 374761393 + cellY * 668265263 + worldSeed * 2246822519) >>> 0);
+
+  const makeRng = (seed, i) => {
+    const s = Math.abs((seed * 1664525 + i * 1013904223) >>> 0);
+    const x = ((s * 22695477 + 1) >>> 0) / 4294967295;
+    const y = ((s * 1664525 + 1013904223) >>> 0) / 4294967295;
+    return { x, y };
+  };
+
+  const positions = [];
+  for (let i = 0; i < 12; i++) {
+    const rng = makeRng(h, i);
+    const ox = 1 + Math.floor(rng.x * (TREE_CELL - 2));
+    const oy = 1 + Math.floor(rng.y * (TREE_CELL - 2));
+    const key = `${ox},${oy}`;
+    if (!positions.some(p => p === key)) {
+      positions.push(key);
+      if ((cellX * TREE_CELL + ox) === tx && (cellY * TREE_CELL + oy) === ty) {
+        // Check city proximity
+        for (const ck of Object.keys(cities)) {
+          const [cx, cy] = ck.split(",").map(Number);
+          if (Math.abs(cx - tx) <= 4 && Math.abs(cy - ty) <= 4) return false;
+        }
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function getTreeVariant(tx, ty, worldSeed, biome) {
+  const h = Math.abs((tx * 1234567 + ty * 7654321 + worldSeed) >>> 0);
+  const r = (h % 100) / 100;
+  // biome-specific variants
+  if (biome === "tundra" || biome === "glacier") return "pine";
+  if (biome === "swamp") return "swamp";
+  if (biome === "desert" || biome === "savanna") return "dead";
+  if (biome === "mountain" || biome === "volcanic") return r > 0.5 ? "dead" : "pine";
+  // forest, jungle, grassland
+  return r > 0.7 ? "autumn" : "forest";
+}
+
 function seededRandom(seed) {
   let s = seed;
   return () => { s = (s * 16807 + 0) % 2147483647; return (s - 1) / 2147483646; };
@@ -948,11 +996,14 @@ function getBiome(x, y, seed) {
   }
 
   // === MOUNTAINS ===
-  if (isMtnRidge || isMtnCluster) {
+  const isStarterPlains = x >= 170 && x <= 300 && y >= 280 && y <= 410;
+  const isGreenPlains = x >= 170 && x <= 300 && y >= 150 && y <= 280;
+  const noMountain = isStarterPlains || isGreenPlains;
+  if (!noMountain && (isMtnRidge || isMtnCluster)) {
     if (temperature < 0.22) return "glacier";
     return "mountain";
   }
-  if (elevation > 0.7) {
+  if (!noMountain && elevation > 0.7) {
     if (temperature < 0.22) return "glacier";
     return "mountain";
   }
@@ -1027,10 +1078,10 @@ function getDifficultyTier(minLevel) {
 
 // Tier → display colour (replaces DIFFICULTY_ZONES colour lookup everywhere)
 const TIER_COLORS = {
-  Beginner:     "#4ade80",
+  Beginner:     "#3aaa60",
   Easy:         "#facc15",
   Intermediate: "#fb923c",
-  Hard:         "#ef4444",
+  Hard:         "#c04848",
   Expert:       "#a855f7",
 };
 
@@ -1260,7 +1311,7 @@ function generateChunkCities(chunkX, chunkY, seed, existingCities) {
 // Boss is 6x stronger due to higher base stats
 
 const BOSS_ITEM_LEVEL_STATS = {
-  baseHp:   50,   // ✅ Changed: 12 → 50
+  baseHp:   75,
   baseAtk:   8,   // ✅ Changed: 18 → 8
   baseXp:   150,  // ✅ Changed: 300 → 150
   baseGold: 100,  // ✅ Changed: 80 → 100
@@ -1342,10 +1393,31 @@ function generateRegionCaves(regionId, seed, cities) {
     const scaledStats = applyBiomeMultiplier(baseStats, pick.biome);
     const lootSeed = Math.floor(rng() * 99999);
 
+    // Name cave after nearest city
+    let caveName = "Unknown Cave";
+    let nearestDist = Infinity;
+    for (const [ck, city] of Object.entries(cities)) {
+      const [cx, cy] = ck.split(",").map(Number);
+      const d = Math.abs(cx - pick.x) + Math.abs(cy - pick.y);
+      if (d < nearestDist) { nearestDist = d; caveName = city.name + " Cave"; }
+    }
+    // Add Part N suffix if name already used
+    const baseName = caveName;
+    const usedNames = caves.map(c => c.cave.name);
+    if (usedNames.includes(caveName)) {
+      let part = 2;
+      while (usedNames.includes(`${baseName} Part ${part}`)) part++;
+      caveName = `${baseName} Part ${part}`;
+      // Also rename the first occurrence to Part 1
+      const firstIdx = caves.findIndex(c => c.cave.name === baseName);
+      if (firstIdx !== -1) caves[firstIdx].cave.name = `${baseName} Part 1`;
+    }
+
     caves.push({
       key,
       cave: {
         x: pick.x, y: pick.y, biome: pick.biome,
+        name: caveName,
         difficulty: `Level ${itemLevel}`,
         itemLevel,
         bossName: boss.name, bossSprite: boss.sprite,
@@ -1390,7 +1462,8 @@ function useChunkWorld(worldSeed, playerPos) {
   const [cities, setCities] = useState({});
   const [caves, setCaves] = useState({});
   const loadedChunksRef = useRef(new Set());
-  const pendingRef = useRef(false); // guards against overlapping batch loads
+  const loadedRegionsRef = useRef(new Set());
+  const pendingRef = useRef(false);
 
   const loadChunk = useCallback((cx, cy) => {
     const ck = chunkKey(cx, cy);
@@ -1402,17 +1475,25 @@ function useChunkWorld(worldSeed, playerPos) {
       const newCities = generateChunkCities(cx, cy, worldSeed, prev);
       if (Object.keys(newCities).length === 0) return prev;
       const merged = { ...prev, ...newCities };
-      // Generate caves for this chunk with merged cities (now returns array)
-      const cavesResult = generateChunkCaves(cx, cy, worldSeed, merged);
-      if (cavesResult && cavesResult.length > 0) {
-        setCaves(cavePrev => {
-          const updated = { ...cavePrev };
-          for (const caveObj of cavesResult) {
-            updated[caveObj.key] = caveObj.cave;
-          }
-          return updated;
-        });
+
+      // Generate caves once per region (not once per chunk)
+      const chunkCenterX = cx * CHUNK_SIZE + CHUNK_SIZE / 2;
+      const chunkCenterY = cy * CHUNK_SIZE + CHUNK_SIZE / 2;
+      const region = getChunkTier(chunkCenterX, chunkCenterY);
+      if (region && !loadedRegionsRef.current.has(region.id)) {
+        loadedRegionsRef.current.add(region.id);
+        const regionCaves = generateRegionCaves(region.id, worldSeed, merged);
+        if (regionCaves.length > 0) {
+          setCaves(cavePrev => {
+            const updated = { ...cavePrev };
+            for (const caveObj of regionCaves) {
+              updated[caveObj.key] = caveObj.cave;
+            }
+            return updated;
+          });
+        }
       }
+
       return merged;
     });
     return true;
@@ -1682,16 +1763,16 @@ function calcStats(attrs, equipment) {
 // ============================================================
 
 const S = {
-  app: { background: "#0a0e27", color: "#e8d7c3", fontFamily: "'Crimson Text', 'Georgia', serif", minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "12px 12px 80px 12px", fontSize: 21, paddingBottom: "80px" },
-  gold: { color: "#d4af37" },
-  panel: { background: "rgba(20,25,50,0.9)", border: "1px solid #d4af3744", borderRadius: 10, padding: 16, marginBottom: 10 },
-  btn: { background: "linear-gradient(180deg, #2a1f0e, #1a140a)", border: "1px solid #d4af37", color: "#d4af37", padding: "10px 20px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontSize: 21, fontWeight: 600, transition: "all 0.15s" },
+  app: { background: "#1e1c24", color: "#c8bfb0", fontFamily: "'Crimson Text', 'Georgia', serif", minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "12px 12px 80px 12px", fontSize: 21, paddingBottom: "80px" },
+  gold: { color: "#b8962a" },
+  panel: { background: "rgba(14,10,16,0.95)", border: "1px solid #8a6a2a55", borderRadius: 10, padding: 16, marginBottom: 10 },
+  btn: { background: "linear-gradient(180deg, #1e1510, #110d08)", border: "1px solid #a08828", color: "#b8962a", padding: "10px 20px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", fontSize: 21, fontWeight: 600, transition: "all 0.15s" },
   btnDisabled: { opacity: 0.4, cursor: "not-allowed" },
-  btnDanger: { borderColor: "#ef4444", color: "#ef4444" },
-  btnSuccess: { borderColor: "#4ade80", color: "#4ade80" },
-  input: { background: "#0d1230", border: "1px solid #d4af3766", color: "#e8d7c3", padding: "10px 14px", borderRadius: 8, fontFamily: "inherit", fontSize: 21, outline: "none", width: "100%" },
-  hpBar: { background: "#1a0000", borderRadius: 5, overflow: "hidden", height: 22, position: "relative", border: "1px solid #ef444466" },
-  manaBar: { background: "#00001a", borderRadius: 5, overflow: "hidden", height: 18, position: "relative", border: "1px solid #4169E166" },
+  btnDanger: { borderColor: "#a03030", color: "#c04848" },
+  btnSuccess: { borderColor: "#2a7a44", color: "#3aaa60" },
+  input: { background: "#0b0910", border: "1px solid #b8962a66", color: "#c8bfb0", padding: "10px 14px", borderRadius: 8, fontFamily: "inherit", fontSize: 21, outline: "none", width: "100%" },
+  hpBar: { background: "#120000", borderRadius: 5, overflow: "hidden", height: 22, position: "relative", border: "1px solid #7a1f1f55" },
+  manaBar: { background: "#06040e", borderRadius: 5, overflow: "hidden", height: 18, position: "relative", border: "1px solid #252f6655" },
   badge: (color) => ({ background: color + "22", color, border: `1px solid ${color}55`, borderRadius: 5, padding: "5px 12px", fontSize: 21, fontWeight: 600 }),
 };
 
@@ -1712,12 +1793,12 @@ const GlobalStyles = () => (
     
     button:not(:disabled):hover {
       filter: brightness(1.3);
-      box-shadow: 0 0 8px #d4af3733;
+      box-shadow: 0 0 8px #7a5a1a44;
     }
     button:not(:disabled):active {
       transform: scale(0.94);
       filter: brightness(0.8);
-      box-shadow: 0 0 2px #d4af3722 inset;
+      box-shadow: 0 0 2px #7a5a1a22 inset;
       transition: all 0.05s;
     }
   `}</style>
@@ -1733,8 +1814,8 @@ if (typeof document !== "undefined" && !document.getElementById("hp-pulse-style"
   st.id = "hp-pulse-style";
   st.textContent = `
     @keyframes hpPulse {
-      0%,100% { opacity: 1; box-shadow: 0 0 4px #ef4444; }
-      50%      { opacity: 0.55; box-shadow: 0 0 14px #ef4444, 0 0 24px #ef444488; }
+      0%,100% { opacity: 1; box-shadow: 0 0 4px #c04848; }
+      50%      { opacity: 0.55; box-shadow: 0 0 14px #c04848, 0 0 24px #c0484888; }
     }
   `;
   document.head.appendChild(st);
@@ -1743,7 +1824,7 @@ if (typeof document !== "undefined" && !document.getElementById("hp-pulse-style"
 function HealthBar({ current, max, label, isMana, pulse }) {
   const pct = Math.max(0, Math.min(100, (current / max) * 100));
   const isLow = !isMana && pct <= 25;
-  const barColor = isMana ? "#4169E1" : pct > 50 ? "#22c55e" : pct > 25 ? "#eab308" : "#ef4444";
+  const barColor = isMana ? "#4169E1" : pct > 50 ? "#1a8a40" : pct > 25 ? "#9a7a10" : "#c04848";
   return (
     <div style={{ marginBottom: 5 }}>
       {label && <div style={{ fontSize: 17, marginBottom: 3, opacity: 0.7 }}>{label}</div>}
@@ -1771,12 +1852,12 @@ const STAT_TOOLTIPS = {
 function StatRow({ statKey, val, statPoints, onAdd }) {
   const [hov, setHov] = useState(false);
   return (
-    <div style={{ position: "relative", display: "flex", justifyContent: "space-between", alignItems: "center", background: "#ffffff06", padding: "8px 12px", borderRadius: 6, border: "1px solid #d4af3711" }}
+    <div style={{ position: "relative", display: "flex", justifyContent: "space-between", alignItems: "center", background: "#ffffff06", padding: "8px 12px", borderRadius: 6, border: "1px solid #b8962a11" }}
       onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
     >
       <span style={{ textTransform: "capitalize", fontSize: 16, cursor: "help" }}>{statKey}</span>
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <span style={{ color: "#d4af37", fontWeight: 700, fontSize: 16 }}>{val}</span>
+        <span style={{ color: "#b8962a", fontWeight: 700, fontSize: 16 }}>{val}</span>
         {statPoints > 0 && (
           <button onClick={onAdd} style={{ ...S.btn, ...S.btnSuccess, padding: "2px 8px", fontSize: 14, lineHeight: 1 }}>+</button>
         )}
@@ -1785,13 +1866,13 @@ function StatRow({ statKey, val, statPoints, onAdd }) {
         <div style={{
           position: "absolute", bottom: "100%", left: "50%", transform: "translateX(-50%)",
           marginBottom: 6, padding: "8px 12px", borderRadius: 8, fontSize: 13, lineHeight: 1.5,
-          background: "rgba(5,8,25,0.97)", border: "1px solid #d4af3755",
+          background: "rgba(5,4,8,0.97)", border: "1px solid #b8962a55",
           boxShadow: "0 4px 16px #000a", whiteSpace: "pre-line", zIndex: 1200,
           pointerEvents: "none", textAlign: "left", minWidth: 200,
         }}>
-          <div style={{ fontWeight: 700, color: "#d4af37", marginBottom: 3, textTransform: "capitalize" }}>{statKey}</div>
+          <div style={{ fontWeight: 700, color: "#b8962a", marginBottom: 3, textTransform: "capitalize" }}>{statKey}</div>
           {STAT_TOOLTIPS[statKey].split("\n").map((line, i) => (
-            <div key={i} style={{ color: "#4ade80" }}>{line}</div>
+            <div key={i} style={{ color: "#3aaa60" }}>{line}</div>
           ))}
         </div>
       )}
@@ -1939,9 +2020,9 @@ function EquipSlot({ slot, item, icon, svgIcon }) {
       <div style={{
         width: 105, height: 105, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
         background: item ? "#ffffff08" : "#ffffff03", borderRadius: 10,
-        border: item ? `1px solid ${(item.rarityColor || "#d4af37") + "44"}` : "1px dashed #ffffff22",
+        border: item ? `1px solid ${(item.rarityColor || "#b8962a") + "44"}` : "1px dashed #ffffff22",
         cursor: "default", transition: "border-color 0.2s",
-        ...(hovered && item ? { borderColor: item.rarityColor || "#d4af37" } : {}),
+        ...(hovered && item ? { borderColor: item.rarityColor || "#b8962a" } : {}),
       }}>
         <span style={{ fontSize: 32 }}>{svgIcon ? svgIcon : icon}</span>
         <div style={{ fontSize: 13, opacity: 0.4, textTransform: "capitalize", marginTop: 3 }}>{slot}</div>
@@ -1953,20 +2034,20 @@ function EquipSlot({ slot, item, icon, svgIcon }) {
         <div style={{
           position: "absolute", bottom: "100%", left: "50%", transform: "translateX(-50%)",
           marginBottom: 8, padding: "10px 14px", borderRadius: 8, fontSize: 15,
-          background: "rgba(5,8,25,0.97)", border: "1px solid #d4af3766",
+          background: "rgba(5,4,8,0.97)", border: "1px solid #b8962a66",
           boxShadow: "0 4px 16px #000a", whiteSpace: "nowrap", zIndex: 1200,
           pointerEvents: "none",
         }}>
-          <div style={{ fontWeight: 700, color: item.rarityColor || "#d4af37", marginBottom: 5, fontSize: 16 }}>{item.name}</div>
+          <div style={{ fontWeight: 700, color: item.rarityColor || "#b8962a", marginBottom: 5, fontSize: 16 }}>{item.name}</div>
           <div style={{ opacity: 0.6, marginBottom: 5 }}>
             <span style={{ color: item.rarityColor || "#ccc", fontWeight: 600 }}>{item.rarity || "Normal"}</span>
             {" • "}<span style={{ textTransform: "capitalize" }}>{item.slot}</span>
-            {item.itemLevel && <><span>{" • "}</span><span style={{ color: "#d4af37" }}>Lvl {item.itemLevel}</span></>}
+            {item.itemLevel && <><span>{" • "}</span><span style={{ color: "#b8962a" }}>Lvl {item.itemLevel}</span></>}
           </div>
-          {item.bonusDamage > 0 && <div style={{ color: "#ef4444", fontWeight: 600 }}>+{item.bonusDamage} Damage</div>}
-          {item.bonusDefense > 0 && <div style={{ color: "#60a5fa", fontWeight: 600 }}>+{item.bonusDefense} Defense</div>}
+          {item.bonusDamage > 0 && <div style={{ color: "#c04848", fontWeight: 600 }}>+{item.bonusDamage} Damage</div>}
+          {item.bonusDefense > 0 && <div style={{ color: "#4a7ab8", fontWeight: 600 }}>+{item.bonusDefense} Defense</div>}
           {item.bonusStats && Object.entries(item.bonusStats).map(([stat, val]) => (
-            <div key={stat} style={{ color: "#4ade80", fontWeight: 600 }}>+{val} {stat.charAt(0).toUpperCase() + stat.slice(1)}</div>
+            <div key={stat} style={{ color: "#3aaa60", fontWeight: 600 }}>+{val} {stat.charAt(0).toUpperCase() + stat.slice(1)}</div>
           ))}
         </div>
       )}
@@ -1981,7 +2062,7 @@ function InventoryRow({ item, count, idx, onUse, onEquip, onSell, onDiscard, sel
       onMouseEnter={() => item.type === "armor" && setHov(true)}
       onMouseLeave={() => setHov(false)}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: "1px solid #d4af3711" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: "1px solid #b8962a11" }}>
         <div>
           <span style={{ fontSize: 17, fontWeight: 600, color: item.rarityColor || undefined }}>{item.name}</span>
           {count > 1 && <span style={{ fontSize: 15, fontWeight: 700, ...S.gold, marginLeft: 6 }}>×{count}</span>}
@@ -2002,19 +2083,19 @@ function InventoryRow({ item, count, idx, onUse, onEquip, onSell, onDiscard, sel
         <div style={{
           position: "absolute", bottom: "100%", left: "50%", transform: "translateX(-50%)",
           marginBottom: 6, padding: "10px 14px", borderRadius: 8, fontSize: 14,
-          background: "rgba(5,8,25,0.97)", border: `1px solid ${(item.rarityColor || "#d4af37") + "66"}`,
+          background: "rgba(5,4,8,0.97)", border: `1px solid ${(item.rarityColor || "#b8962a") + "66"}`,
           boxShadow: "0 4px 16px #000a", whiteSpace: "nowrap", zIndex: 1200,
           pointerEvents: "none",
         }}>
-          <div style={{ fontWeight: 700, color: item.rarityColor || "#d4af37", marginBottom: 4, fontSize: 15 }}>{item.name}</div>
+          <div style={{ fontWeight: 700, color: item.rarityColor || "#b8962a", marginBottom: 4, fontSize: 15 }}>{item.name}</div>
           <div style={{ opacity: 0.6, marginBottom: 4 }}>
             <span style={{ color: item.rarityColor || "#ccc", fontWeight: 600 }}>{item.rarity || "Normal"}</span>
             {" • "}<span style={{ textTransform: "capitalize" }}>{item.slot}</span>
           </div>
-          {item.bonusDamage > 0 && <div style={{ color: "#ef4444", fontWeight: 600 }}>+{item.bonusDamage} Damage</div>}
-          {item.bonusDefense > 0 && <div style={{ color: "#60a5fa", fontWeight: 600 }}>+{item.bonusDefense} Defense</div>}
+          {item.bonusDamage > 0 && <div style={{ color: "#c04848", fontWeight: 600 }}>+{item.bonusDamage} Damage</div>}
+          {item.bonusDefense > 0 && <div style={{ color: "#4a7ab8", fontWeight: 600 }}>+{item.bonusDefense} Defense</div>}
           {item.bonusStats && Object.entries(item.bonusStats).map(([stat, val]) => (
-            <div key={stat} style={{ color: "#4ade80", fontWeight: 600 }}>+{val} {stat.charAt(0).toUpperCase() + stat.slice(1)}</div>
+            <div key={stat} style={{ color: "#3aaa60", fontWeight: 600 }}>+{val} {stat.charAt(0).toUpperCase() + stat.slice(1)}</div>
           ))}
         </div>
       )}
@@ -2071,7 +2152,7 @@ function CharacterCreation({ onStart }) {
   return (
     <div style={{ ...S.app, justifyContent: "center", padding: 20 }}>
       <div style={{ maxWidth: 540, width: "100%" }}>
-        <h1 style={{ ...S.gold, textAlign: "center", fontSize: 38, marginBottom: 4, letterSpacing: 2, textShadow: "0 0 20px #d4af3744" }}>⚔️ Realm of Shadows</h1>
+        <h1 style={{ ...S.gold, textAlign: "center", fontSize: 38, marginBottom: 4, letterSpacing: 2, textShadow: "0 0 20px #b8962a44" }}>⚔️ Realm of Shadows</h1>
         <p style={{ textAlign: "center", opacity: 0.6, marginBottom: 24, fontSize: 21 }}>Create Your Hero</p>
 
         <div style={S.panel}>
@@ -2090,7 +2171,7 @@ function CharacterCreation({ onStart }) {
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <span style={{ textTransform: "capitalize", fontSize: 17, fontWeight: 600 }}>{key}</span>
-                  <button onClick={() => setShowInfo(showInfo === key ? null : key)} style={{ background: "none", border: "none", color: "#d4af37", cursor: "pointer", fontSize: 21, padding: 0 }}>ℹ️</button>
+                  <button onClick={() => setShowInfo(showInfo === key ? null : key)} style={{ background: "none", border: "none", color: "#b8962a", cursor: "pointer", fontSize: 21, padding: 0 }}>ℹ️</button>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <button onClick={() => adjust(key, -1)} style={{ ...S.btn, padding: "6px 14px", fontSize: 21 }}>−</button>
@@ -2098,7 +2179,7 @@ function CharacterCreation({ onStart }) {
                   <button onClick={() => adjust(key, 1)} style={{ ...S.btn, padding: "6px 14px", fontSize: 21, ...(remaining <= 0 || val >= 10 ? S.btnDisabled : {}) }}>+</button>
                 </div>
               </div>
-              {showInfo === key && <div style={{ background: "#0d1230", padding: 8, borderRadius: 4, fontSize: 21, marginTop: 4, opacity: 0.8 }}>{STAT_TOOLTIPS[key]}</div>}
+              {showInfo === key && <div style={{ background: "#0b0910", padding: 8, borderRadius: 4, fontSize: 21, marginTop: 4, opacity: 0.8 }}>{STAT_TOOLTIPS[key]}</div>}
             </div>
           ))}
         </div>
@@ -2107,7 +2188,7 @@ function CharacterCreation({ onStart }) {
           <div style={{ fontSize: 21, opacity: 0.6, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Stats Preview</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
             <div style={{ textAlign: "center" }}>
-              <div style={{ color: "#ef4444", fontSize: 21, fontWeight: 700 }}>{stats.maxHp}</div>
+              <div style={{ color: "#c04848", fontSize: 21, fontWeight: 700 }}>{stats.maxHp}</div>
               <div style={{ fontSize: 17, opacity: 0.5 }}>Max HP</div>
             </div>
             <div style={{ textAlign: "center" }}>
@@ -2115,7 +2196,7 @@ function CharacterCreation({ onStart }) {
               <div style={{ fontSize: 17, opacity: 0.5 }}>Max Mana</div>
             </div>
             <div style={{ textAlign: "center" }}>
-              <div style={{ color: "#d4af37", fontSize: 21, fontWeight: 700 }}>{stats.damage}</div>
+              <div style={{ color: "#b8962a", fontSize: 21, fontWeight: 700 }}>{stats.damage}</div>
               <div style={{ fontSize: 17, opacity: 0.5 }}>Damage</div>
             </div>
           </div>
@@ -2169,7 +2250,7 @@ function SpellButton({ spell, mana, maxMana, damage, onCast, disabled }) {
       {tooltip && (
         <div style={{
           position: "fixed", left: tooltipPos.x, top: tooltipPos.y,
-          background: "#1a1a2e", border: "1px solid #4169E1", borderRadius: 8,
+          background: "#100c18", border: "1px solid #4169E1", borderRadius: 8,
           padding: 10, fontSize: 12, minWidth: 200, color: "#fff", zIndex: 10000, pointerEvents: "none",
         }}>
           <div style={{ fontWeight: 700, color: "#4169E1", marginBottom: 6 }}>{spell.name}</div>
@@ -2177,7 +2258,7 @@ function SpellButton({ spell, mana, maxMana, damage, onCast, disabled }) {
           <div style={{ opacity: 0.8, marginBottom: 4 }}>⚔️ Damage: <span style={{ color: "#ff8800", fontWeight: 600 }}>{spell.dmgRange[0]}-{spell.dmgRange[1]}</span></div>
           {spell.effect && (
             <div style={{ opacity: 0.8, marginBottom: 4 }}>
-              ✨ Effect: <span style={{ color: "#4ade80", fontWeight: 600 }}>
+              ✨ Effect: <span style={{ color: "#3aaa60", fontWeight: 600 }}>
                 {spell.effect === "slow" ? `Slow: -50% enemy dmg (${spell.slowDuration} rounds)` :
                  spell.effect === "heal" ? `Lifesteal: ${Math.round(spell.healPercent * 100)}% of damage dealt` :
                  spell.effect === "dodge" ? "Stealth: enemy misses next 2 attacks" :
@@ -2238,7 +2319,7 @@ function SpecialButton({ special, hp, maxHp, onUse, disabled }) {
       {tooltip && (
         <div style={{
           position: "fixed", left: tooltipPos.x, top: tooltipPos.y,
-          background: "#1a1a2e", border: "1px solid #ff8800", borderRadius: 8,
+          background: "#100c18", border: "1px solid #ff8800", borderRadius: 8,
           padding: 10, fontSize: 12, minWidth: 200, color: "#fff", zIndex: 10000, pointerEvents: "none",
         }}>
           <div style={{ fontWeight: 700, color: "#ff8800", marginBottom: 6 }}>{special.name}</div>
@@ -2279,28 +2360,28 @@ function SpecialButton({ special, hp, maxHp, onUse, disabled }) {
 function CastleSVG({ size = 24 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 170 230" fill="none" style={{ display: "inline-block", verticalAlign: "middle" }}>
-      <rect x="20" y="110" width="130" height="115" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1.2"/>
+      <rect x="20" y="110" width="130" height="115" fill="#100c18" stroke="#5a5a8a" strokeWidth="1.2"/>
       <line x1="20" y1="130" x2="150" y2="130" stroke="#2a2a4a" strokeWidth="0.8"/>
       <line x1="20" y1="152" x2="150" y2="152" stroke="#2a2a4a" strokeWidth="0.8"/>
       <line x1="20" y1="174" x2="150" y2="174" stroke="#2a2a4a" strokeWidth="0.8"/>
-      <rect x="10" y="85" width="38" height="140" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1.2"/>
-      <rect x="10" y="72" width="10" height="16" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1"/>
-      <rect x="24" y="72" width="10" height="16" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1"/>
+      <rect x="10" y="85" width="38" height="140" fill="#100c18" stroke="#5a5a8a" strokeWidth="1.2"/>
+      <rect x="10" y="72" width="10" height="16" fill="#100c18" stroke="#5a5a8a" strokeWidth="1"/>
+      <rect x="24" y="72" width="10" height="16" fill="#100c18" stroke="#5a5a8a" strokeWidth="1"/>
       <rect x="14" y="105" width="10" height="14" rx="5" fill="#0a0a14" stroke="#3a3a5a" strokeWidth="0.8"/>
-      <rect x="15" y="106" width="8" height="12" rx="4" fill="#d4af37" opacity="0.6"/>
-      <rect x="122" y="85" width="38" height="140" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1.2"/>
-      <rect x="126" y="72" width="10" height="16" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1"/>
-      <rect x="140" y="72" width="10" height="16" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1"/>
+      <rect x="15" y="106" width="8" height="12" rx="4" fill="#b8962a" opacity="0.6"/>
+      <rect x="122" y="85" width="38" height="140" fill="#100c18" stroke="#5a5a8a" strokeWidth="1.2"/>
+      <rect x="126" y="72" width="10" height="16" fill="#100c18" stroke="#5a5a8a" strokeWidth="1"/>
+      <rect x="140" y="72" width="10" height="16" fill="#100c18" stroke="#5a5a8a" strokeWidth="1"/>
       <rect x="146" y="105" width="10" height="14" rx="5" fill="#0a0a14" stroke="#3a3a5a" strokeWidth="0.8"/>
-      <rect x="58" y="55" width="54" height="170" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1.2"/>
-      <rect x="58" y="40" width="12" height="18" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1"/>
-      <rect x="76" y="40" width="12" height="18" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1"/>
-      <rect x="94" y="40" width="12" height="18" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1"/>
+      <rect x="58" y="55" width="54" height="170" fill="#100c18" stroke="#5a5a8a" strokeWidth="1.2"/>
+      <rect x="58" y="40" width="12" height="18" fill="#100c18" stroke="#5a5a8a" strokeWidth="1"/>
+      <rect x="76" y="40" width="12" height="18" fill="#100c18" stroke="#5a5a8a" strokeWidth="1"/>
+      <rect x="94" y="40" width="12" height="18" fill="#100c18" stroke="#5a5a8a" strokeWidth="1"/>
       <rect x="73" y="78" width="24" height="28" rx="12" fill="#0a0a14" stroke="#3a3a5a" strokeWidth="0.8"/>
-      <rect x="74" y="79" width="22" height="26" rx="11" fill="#d4af37" opacity="0.6"/>
+      <rect x="74" y="79" width="22" height="26" rx="11" fill="#b8962a" opacity="0.6"/>
       <rect x="73" y="118" width="24" height="28" rx="12" fill="#0a0a14" stroke="#3a3a5a" strokeWidth="0.8"/>
-      <rect x="73" y="168" width="24" height="57" fill="#080810"/>
-      <path d="M73,188 Q73,168 85,168 Q97,168 97,188" fill="#080810" stroke="#3a3a5a" strokeWidth="0.8"/>
+      <rect x="73" y="168" width="24" height="57" fill="#060408"/>
+      <path d="M73,188 Q73,168 85,168 Q97,168 97,188" fill="#060408" stroke="#3a3a5a" strokeWidth="0.8"/>
       <line x1="79" y1="170" x2="79" y2="225" stroke="#2a2a3a" strokeWidth="1"/>
       <line x1="85" y1="170" x2="85" y2="225" stroke="#2a2a3a" strokeWidth="1"/>
       <line x1="91" y1="170" x2="91" y2="225" stroke="#2a2a3a" strokeWidth="1"/>
@@ -2315,13 +2396,13 @@ function CastleSVG({ size = 24 }) {
 function CaveSVG({ size = 24 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 100 100" fill="none" style={{ display: "inline-block", verticalAlign: "middle" }}>
-      <ellipse cx="50" cy="72" rx="48" ry="28" fill="#1a1a2e" stroke="#4a4a6a" strokeWidth="1.2"/>
-      <ellipse cx="50" cy="65" rx="46" ry="34" fill="#1a1a2e" stroke="#4a4a6a" strokeWidth="1"/>
-      <ellipse cx="38" cy="55" rx="30" ry="26" fill="#1a1a2e" stroke="#4a4a6a" strokeWidth="0.8"/>
-      <ellipse cx="62" cy="52" rx="28" ry="24" fill="#1a1a2e" stroke="#4a4a6a" strokeWidth="0.8"/>
-      <ellipse cx="50" cy="76" rx="22" ry="16" fill="#080810"/>
-      <path d="M28,76 Q28,56 50,53 Q72,56 72,76" fill="#080810"/>
-      <ellipse cx="50" cy="78" rx="18" ry="12" fill="#030308"/>
+      <ellipse cx="50" cy="72" rx="48" ry="28" fill="#100c18" stroke="#4a4a6a" strokeWidth="1.2"/>
+      <ellipse cx="50" cy="65" rx="46" ry="34" fill="#100c18" stroke="#4a4a6a" strokeWidth="1"/>
+      <ellipse cx="38" cy="55" rx="30" ry="26" fill="#100c18" stroke="#4a4a6a" strokeWidth="0.8"/>
+      <ellipse cx="62" cy="52" rx="28" ry="24" fill="#100c18" stroke="#4a4a6a" strokeWidth="0.8"/>
+      <ellipse cx="50" cy="76" rx="22" ry="16" fill="#060408"/>
+      <path d="M28,76 Q28,56 50,53 Q72,56 72,76" fill="#060408"/>
+      <ellipse cx="50" cy="78" rx="18" ry="12" fill="#020204"/>
       <polygon points="36,56 39,70 42,56" fill="#141428"/>
       <polygon points="46,53 49,68 52,53" fill="#141428"/>
       <polygon points="56,54 59,69 62,54" fill="#141428"/>
@@ -2338,12 +2419,12 @@ function WeaponSVG({ size = 24 }) {
       <g transform="translate(32,32) rotate(-45)">
         <path d="M0,-24 L3,-5 L0,0 L-3,-5 Z" fill="#c8d0dc" stroke="#8890a0" strokeWidth="0.8"/>
         <path d="M0,-24 L0.8,-5 L0,0 L-0.8,-5 Z" fill="#e8ecf2"/>
-        <path d="M-8,-5 L-2,-6 L0,-5 L2,-6 L8,-5 L6,-3 L0,-4 L-6,-3 Z" fill="#d4af37" stroke="#a07a10" strokeWidth="0.6"/>
+        <path d="M-8,-5 L-2,-6 L0,-5 L2,-6 L8,-5 L6,-3 L0,-4 L-6,-3 Z" fill="#b8962a" stroke="#a07a10" strokeWidth="0.6"/>
         <rect x="-2" y="-3" width="4" height="10" rx="1" fill="#3a1a0a" stroke="#5a3a1a" strokeWidth="0.5"/>
         <line x1="-2" y1="-1" x2="2" y2="-1" stroke="#8b6a3e" strokeWidth="0.8"/>
         <line x1="-2" y1="2" x2="2" y2="2" stroke="#8b6a3e" strokeWidth="0.8"/>
         <line x1="-2" y1="5" x2="2" y2="5" stroke="#8b6a3e" strokeWidth="0.8"/>
-        <ellipse cx="0" cy="9" rx="3.5" ry="2.5" fill="#d4af37" stroke="#a07a10" strokeWidth="0.8"/>
+        <ellipse cx="0" cy="9" rx="3.5" ry="2.5" fill="#b8962a" stroke="#a07a10" strokeWidth="0.8"/>
       </g>
     </svg>
   );
@@ -2354,9 +2435,9 @@ function ShieldSVG({ size = 24 }) {
     <svg width={size} height={size} viewBox="0 0 64 64" fill="none" style={{ display:"inline-block", verticalAlign:"middle" }}>
       <path d="M32 6 L54 16 L54 34 Q54 52 32 60 Q10 52 10 34 L10 16 Z" fill="#1a1a3e" stroke="#5a5a9a" strokeWidth="2"/>
       <path d="M32 12 L48 20 L48 34 Q48 48 32 55 Q16 48 16 34 L16 20 Z" fill="#2a2a5a" stroke="#4a4a8a" strokeWidth="1"/>
-      <line x1="32" y1="14" x2="32" y2="54" stroke="#d4af37" strokeWidth="2"/>
-      <line x1="16" y1="30" x2="48" y2="30" stroke="#d4af37" strokeWidth="2"/>
-      <path d="M32 20 L35 28 L32 25 L29 28 Z" fill="#d4af37"/>
+      <line x1="32" y1="14" x2="32" y2="54" stroke="#b8962a" strokeWidth="2"/>
+      <line x1="16" y1="30" x2="48" y2="30" stroke="#b8962a" strokeWidth="2"/>
+      <path d="M32 20 L35 28 L32 25 L29 28 Z" fill="#b8962a"/>
     </svg>
   );
 }
@@ -2368,7 +2449,7 @@ function HelmSVG({ size = 24 }) {
       <rect x="20" y="28" width="24" height="5" rx="2" fill="#0a0a14"/>
       <path d="M32 10 Q36 2 40 4 Q36 10 32 10Z" fill="#8b0000"/>
       <path d="M32 10 Q38 4 44 6 Q40 12 36 14" fill="none" stroke="#8b0000" strokeWidth="2.5" strokeLinecap="round"/>
-      <line x1="16" y1="36" x2="48" y2="36" stroke="#d4af37" strokeWidth="0.8" opacity="0.6"/>
+      <line x1="16" y1="36" x2="48" y2="36" stroke="#b8962a" strokeWidth="0.8" opacity="0.6"/>
       <rect x="22" y="44" width="20" height="5" rx="2" fill="#3a3a5a" stroke="#5a5a8a" strokeWidth="0.8"/>
     </svg>
   );
@@ -2378,9 +2459,9 @@ function ChestSVG({ size = 24 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 64 64" fill="none" style={{ display:"inline-block", verticalAlign:"middle" }}>
       <path d="M16 20 L8 28 L14 32 L14 56 L50 56 L50 32 L56 28 L48 20 L40 26 L32 22 L24 26 Z" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1.5"/>
-      <path d="M24 20 Q32 16 40 20 L36 28 L32 24 L28 28Z" fill="#1a1a2e" stroke="#4a4a6a" strokeWidth="1"/>
-      <line x1="32" y1="30" x2="32" y2="52" stroke="#d4af37" strokeWidth="1.2" opacity="0.7"/>
-      <line x1="20" y1="40" x2="44" y2="40" stroke="#d4af37" strokeWidth="1.2" opacity="0.7"/>
+      <path d="M24 20 Q32 16 40 20 L36 28 L32 24 L28 28Z" fill="#100c18" stroke="#4a4a6a" strokeWidth="1"/>
+      <line x1="32" y1="30" x2="32" y2="52" stroke="#b8962a" strokeWidth="1.2" opacity="0.7"/>
+      <line x1="20" y1="40" x2="44" y2="40" stroke="#b8962a" strokeWidth="1.2" opacity="0.7"/>
       <path d="M14 32 L8 28 L12 48 L14 48Z" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1"/>
       <path d="M50 32 L56 28 L52 48 L50 48Z" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1"/>
     </svg>
@@ -2391,11 +2472,11 @@ function MerchantSVG({ size = 24 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 64 64" fill="none" style={{ display:"inline-block", verticalAlign:"middle" }}>
       <ellipse cx="32" cy="50" rx="20" ry="6" fill="#b8860b" stroke="#8a6008" strokeWidth="1"/>
-      <rect x="12" y="38" width="40" height="12" fill="#d4af37" stroke="#a07a10" strokeWidth="1"/>
+      <rect x="12" y="38" width="40" height="12" fill="#b8962a" stroke="#a07a10" strokeWidth="1"/>
       <ellipse cx="32" cy="38" rx="20" ry="6" fill="#e8c840" stroke="#a07a10" strokeWidth="1"/>
-      <rect x="12" y="26" width="40" height="12" fill="#d4af37" stroke="#a07a10" strokeWidth="1"/>
+      <rect x="12" y="26" width="40" height="12" fill="#b8962a" stroke="#a07a10" strokeWidth="1"/>
       <ellipse cx="32" cy="26" rx="20" ry="6" fill="#e8c840" stroke="#a07a10" strokeWidth="1"/>
-      <rect x="12" y="16" width="40" height="10" fill="#d4af37" stroke="#a07a10" strokeWidth="1"/>
+      <rect x="12" y="16" width="40" height="10" fill="#b8962a" stroke="#a07a10" strokeWidth="1"/>
       <ellipse cx="32" cy="16" rx="20" ry="6" fill="#f0d050" stroke="#a07a10" strokeWidth="1.2"/>
     </svg>
   );
@@ -2408,9 +2489,9 @@ function BlacksmithSVG({ size = 24 }) {
       <rect x="35" y="20" width="7" height="36" rx="3" fill="#8b6a3e" stroke="#6a4a20" strokeWidth="1"/>
       <rect x="8" y="46" width="30" height="8" rx="2" fill="#3a3a4a" stroke="#5a5a6a" strokeWidth="1"/>
       <rect x="12" y="38" width="22" height="10" rx="2" fill="#4a4a5a" stroke="#5a5a6a" strokeWidth="1"/>
-      <line x1="12" y1="36" x2="8" y2="28" stroke="#d4af37" strokeWidth="1.5" strokeLinecap="round"/>
+      <line x1="12" y1="36" x2="8" y2="28" stroke="#b8962a" strokeWidth="1.5" strokeLinecap="round"/>
       <line x1="18" y1="34" x2="16" y2="24" stroke="#ef8844" strokeWidth="1.2" strokeLinecap="round"/>
-      <line x1="8" y1="30" x2="4" y2="24" stroke="#d4af37" strokeWidth="1" strokeLinecap="round"/>
+      <line x1="8" y1="30" x2="4" y2="24" stroke="#b8962a" strokeWidth="1" strokeLinecap="round"/>
     </svg>
   );
 }
@@ -2418,11 +2499,11 @@ function BlacksmithSVG({ size = 24 }) {
 function InnSVG({ size = 24 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 64 64" fill="none" style={{ display:"inline-block", verticalAlign:"middle" }}>
-      <rect x="8" y="26" width="48" height="32" rx="2" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1.2"/>
+      <rect x="8" y="26" width="48" height="32" rx="2" fill="#100c18" stroke="#5a5a8a" strokeWidth="1.2"/>
       <path d="M4 28 L32 8 L60 28 Z" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1.2"/>
-      <rect x="26" y="40" width="12" height="18" rx="6" fill="#080810"/>
-      <rect x="12" y="32" width="10" height="8" rx="2" fill="#d4af3766"/>
-      <rect x="42" y="32" width="10" height="8" rx="2" fill="#d4af3766"/>
+      <rect x="26" y="40" width="12" height="18" rx="6" fill="#060408"/>
+      <rect x="12" y="32" width="10" height="8" rx="2" fill="#b8962a66"/>
+      <rect x="42" y="32" width="10" height="8" rx="2" fill="#b8962a66"/>
       <rect x="20" y="22" width="24" height="8" rx="2" fill="#8b6a3e" stroke="#6a4a20" strokeWidth="0.8"/>
     </svg>
   );
@@ -2446,12 +2527,12 @@ function BulletinSVG({ size = 24 }) {
 function LeaveSVG({ size = 24 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 64 64" fill="none" style={{ display:"inline-block", verticalAlign:"middle" }}>
-      <rect x="10" y="8" width="36" height="50" rx="3" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1.5"/>
+      <rect x="10" y="8" width="36" height="50" rx="3" fill="#100c18" stroke="#5a5a8a" strokeWidth="1.5"/>
       <rect x="14" y="12" width="28" height="42" rx="2" fill="#2a2a3e" stroke="#4a4a6a" strokeWidth="1"/>
-      <circle cx="36" cy="38" r="3" fill="#d4af37" stroke="#a07a10" strokeWidth="0.8"/>
-      <line x1="44" y1="32" x2="56" y2="32" stroke="#ef4444" strokeWidth="2.5" strokeLinecap="round"/>
-      <line x1="50" y1="26" x2="56" y2="32" stroke="#ef4444" strokeWidth="2.5" strokeLinecap="round"/>
-      <line x1="50" y1="38" x2="56" y2="32" stroke="#ef4444" strokeWidth="2.5" strokeLinecap="round"/>
+      <circle cx="36" cy="38" r="3" fill="#b8962a" stroke="#a07a10" strokeWidth="0.8"/>
+      <line x1="44" y1="32" x2="56" y2="32" stroke="#c04848" strokeWidth="2.5" strokeLinecap="round"/>
+      <line x1="50" y1="26" x2="56" y2="32" stroke="#c04848" strokeWidth="2.5" strokeLinecap="round"/>
+      <line x1="50" y1="38" x2="56" y2="32" stroke="#c04848" strokeWidth="2.5" strokeLinecap="round"/>
     </svg>
   );
 }
@@ -2475,9 +2556,9 @@ function BedSVG({ size = 24 }) {
       <rect x="6" y="30" width="52" height="24" rx="3" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1.2"/>
       <rect x="10" y="26" width="18" height="12" rx="4" fill="#e8dcc8" stroke="#c8b898" strokeWidth="0.8"/>
       <rect x="10" y="34" width="44" height="16" rx="2" fill="#3a3a6a" stroke="#5a5a9a" strokeWidth="0.8"/>
-      <rect x="6" y="20" width="10" height="36" rx="2" fill="#1a1a2e" stroke="#4a4a6a" strokeWidth="1"/>
-      <rect x="10" y="52" width="6" height="8" rx="1" fill="#1a1a2e"/>
-      <rect x="48" y="52" width="6" height="8" rx="1" fill="#1a1a2e"/>
+      <rect x="6" y="20" width="10" height="36" rx="2" fill="#100c18" stroke="#4a4a6a" strokeWidth="1"/>
+      <rect x="10" y="52" width="6" height="8" rx="1" fill="#100c18"/>
+      <rect x="48" y="52" width="6" height="8" rx="1" fill="#100c18"/>
     </svg>
   );
 }
@@ -2502,7 +2583,7 @@ function MedalSVG({ size = 24 }) {
       <path d="M24 8 L32 18 L40 8 L44 16 L32 28 L20 16Z" fill="#4a4a9a" stroke="#3a3a7a" strokeWidth="1"/>
       <line x1="28" y1="8" x2="32" y2="28" stroke="#6a6aaa" strokeWidth="1.5"/>
       <line x1="36" y1="8" x2="32" y2="28" stroke="#6a6aaa" strokeWidth="1.5"/>
-      <circle cx="32" cy="44" r="16" fill="#d4af37" stroke="#a07a10" strokeWidth="2"/>
+      <circle cx="32" cy="44" r="16" fill="#b8962a" stroke="#a07a10" strokeWidth="2"/>
       <circle cx="32" cy="44" r="12" fill="#e8c040" stroke="#c09020" strokeWidth="0.8"/>
       <path d="M32 34 L34 41 L41 41 L35.5 45.5 L37.5 52 L32 48 L26.5 52 L28.5 45.5 L23 41 L30 41Z" fill="#a07a10"/>
     </svg>
@@ -2514,7 +2595,7 @@ function KillSVG({ size = 24 }) {
     <svg width={size} height={size} viewBox="0 0 64 64" fill="none" style={{ display:"inline-block", verticalAlign:"middle" }}>
       <path d="M32 8 L38 28 L32 32 L26 28 Z" fill="#b0b8c8" stroke="#8090a8" strokeWidth="1"/>
       <circle cx="32" cy="8" r="3" fill="#c01818"/>
-      <rect x="24" y="30" width="16" height="5" rx="2" fill="#d4af37" stroke="#a07a10" strokeWidth="0.8"/>
+      <rect x="24" y="30" width="16" height="5" rx="2" fill="#b8962a" stroke="#a07a10" strokeWidth="0.8"/>
       <rect x="28" y="34" width="8" height="14" rx="3" fill="#6b3a1e" stroke="#4a2a10" strokeWidth="1"/>
       <circle cx="32" cy="50" r="4" fill="#8b8b6a" stroke="#6a6a4a" strokeWidth="0.8"/>
     </svg>
@@ -2524,10 +2605,10 @@ function KillSVG({ size = 24 }) {
 function DeliverSVG({ size = 24 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 64 64" fill="none" style={{ display:"inline-block", verticalAlign:"middle" }}>
-      <rect x="8" y="18" width="48" height="34" rx="3" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1.2"/>
+      <rect x="8" y="18" width="48" height="34" rx="3" fill="#100c18" stroke="#5a5a8a" strokeWidth="1.2"/>
       <path d="M8 18 L32 36 L56 18Z" fill="#2a2a4a" stroke="#5a5a8a" strokeWidth="1"/>
       <circle cx="32" cy="34" r="6" fill="#8b0000" stroke="#6a0000" strokeWidth="0.8"/>
-      <text x="32" y="37" textAnchor="middle" fontSize="8" fill="#d4af37" fontWeight="700">✦</text>
+      <text x="32" y="37" textAnchor="middle" fontSize="8" fill="#b8962a" fontWeight="700">✦</text>
     </svg>
   );
 }
@@ -2541,7 +2622,7 @@ function GatherSVG({ size = 24 }) {
       <line x1="10" y1="36" x2="54" y2="36" stroke="#6a4a20" strokeWidth="1"/>
       <rect x="8" y="28" width="48" height="4" rx="1" fill="#4a4a5a" stroke="#3a3a4a" strokeWidth="0.5"/>
       <rect x="8" y="44" width="48" height="4" rx="1" fill="#4a4a5a" stroke="#3a3a4a" strokeWidth="0.5"/>
-      <rect x="28" y="14" width="8" height="6" rx="1" fill="#d4af37" stroke="#a07a10" strokeWidth="0.8"/>
+      <rect x="28" y="14" width="8" height="6" rx="1" fill="#b8962a" stroke="#a07a10" strokeWidth="0.8"/>
     </svg>
   );
 }
@@ -2549,7 +2630,7 @@ function GatherSVG({ size = 24 }) {
 function CrownSVG({ size = 24 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 80 60" fill="none" style={{ display:"inline-block", verticalAlign:"middle" }}>
-      <path d="M8 48 L8 22 L24 36 L40 8 L56 36 L72 22 L72 48 Z" fill="#d4af37" stroke="#a07a10" strokeWidth="2"/>
+      <path d="M8 48 L8 22 L24 36 L40 8 L56 36 L72 22 L72 48 Z" fill="#b8962a" stroke="#a07a10" strokeWidth="2"/>
       <rect x="8" y="46" width="64" height="10" rx="3" fill="#b8860b" stroke="#a07a10" strokeWidth="1.5"/>
       <circle cx="40" cy="10" r="5" fill="#e8c040"/>
       <circle cx="10" cy="24" r="4" fill="#e8c040"/>
@@ -2557,6 +2638,67 @@ function CrownSVG({ size = 24 }) {
       <circle cx="20" cy="50" r="3" fill="#ff4444"/>
       <circle cx="40" cy="50" r="3" fill="#4488ff"/>
       <circle cx="60" cy="50" r="3" fill="#44cc44"/>
+    </svg>
+  );
+}
+
+function TreeSVG({ variant = "forest", size = 40 }) {
+  const s = size;
+  if (variant === "pine") return (
+    <svg width={s} height={s} viewBox="0 0 40 50" fill="none" style={{ position:"absolute", bottom:0, left:"50%", transform:"translateX(-50%)", pointerEvents:"none", overflow:"visible" }}>
+      <rect x="17" y="38" width="6" height="10" rx="1" fill="#2a1e10"/>
+      <polygon points="20,4 32,22 8,22" fill="#1a3010"/>
+      <polygon points="20,14 34,34 6,34" fill="#243818"/>
+      <polygon points="20,24 36,46 4,46" fill="#2e4a20"/>
+    </svg>
+  );
+  if (variant === "dead") return (
+    <svg width={s} height={s} viewBox="0 0 40 55" fill="none" style={{ position:"absolute", bottom:0, left:"50%", transform:"translateX(-50%)", pointerEvents:"none", overflow:"visible" }}>
+      <rect x="17" y="36" width="6" height="16" rx="1" fill="#2a1e10"/>
+      <line x1="20" y1="36" x2="10" y2="20" stroke="#2a1e10" strokeWidth="3" strokeLinecap="round"/>
+      <line x1="20" y1="30" x2="30" y2="16" stroke="#2a1e10" strokeWidth="2.5" strokeLinecap="round"/>
+      <line x1="10" y1="20" x2="4" y2="10" stroke="#2a1e10" strokeWidth="2" strokeLinecap="round"/>
+      <line x1="10" y1="20" x2="14" y2="10" stroke="#2a1e10" strokeWidth="1.5" strokeLinecap="round"/>
+      <line x1="30" y1="16" x2="36" y2="6" stroke="#2a1e10" strokeWidth="2" strokeLinecap="round"/>
+      <line x1="20" y1="28" x2="8" y2="32" stroke="#2a1e10" strokeWidth="2" strokeLinecap="round"/>
+      <circle cx="4" cy="8" r="1.5" fill="#8b0000" opacity="0.7"/>
+      <circle cx="36" cy="4" r="1.5" fill="#8b0000" opacity="0.7"/>
+    </svg>
+  );
+  if (variant === "swamp") return (
+    <svg width={s} height={s} viewBox="0 0 40 55" fill="none" style={{ position:"absolute", bottom:0, left:"50%", transform:"translateX(-50%)", pointerEvents:"none", overflow:"visible" }}>
+      <path d="M20,52 Q16,38 18,26 Q14,14 20,6" stroke="#2a1e10" strokeWidth="5" fill="none" strokeLinecap="round"/>
+      <path d="M18,26 Q8,20 4,10" stroke="#2a1e10" strokeWidth="3" fill="none" strokeLinecap="round"/>
+      <path d="M19,18 Q30,12 34,4" stroke="#2a1e10" strokeWidth="2.5" fill="none" strokeLinecap="round"/>
+      <ellipse cx="4" cy="8" rx="7" ry="5" fill="#1e3010" opacity="0.9"/>
+      <ellipse cx="34" cy="3" rx="6" ry="5" fill="#1e3010" opacity="0.9"/>
+      <ellipse cx="20" cy="4" rx="8" ry="6" fill="#2a4018"/>
+      <circle cx="2" cy="6" r="1.5" fill="#3aaa60" opacity="0.5"/>
+    </svg>
+  );
+  if (variant === "autumn") return (
+    <svg width={s} height={s} viewBox="0 0 40 55" fill="none" style={{ position:"absolute", bottom:0, left:"50%", transform:"translateX(-50%)", pointerEvents:"none", overflow:"visible" }}>
+      <rect x="17" y="36" width="6" height="16" rx="1" fill="#3a2414"/>
+      <ellipse cx="20" cy="34" rx="13" ry="9" fill="#5a2e08"/>
+      <ellipse cx="20" cy="25" rx="11" ry="10" fill="#7a3c10"/>
+      <ellipse cx="20" cy="16" rx="9" ry="9" fill="#8a4c14"/>
+      <ellipse cx="11" cy="22" rx="7" ry="6" fill="#7a3c10"/>
+      <ellipse cx="29" cy="22" rx="7" ry="6" fill="#7a3c10"/>
+      <ellipse cx="20" cy="8" rx="7" ry="7" fill="#9a6020"/>
+      <circle cx="10" cy="14" r="1.5" fill="#c8780a" opacity="0.8"/>
+      <circle cx="30" cy="14" r="1.5" fill="#c8780a" opacity="0.8"/>
+    </svg>
+  );
+  // default: forest
+  return (
+    <svg width={s} height={s} viewBox="0 0 40 55" fill="none" style={{ position:"absolute", bottom:0, left:"50%", transform:"translateX(-50%)", pointerEvents:"none", overflow:"visible" }}>
+      <rect x="17" y="36" width="6" height="16" rx="1" fill="#2a1e10"/>
+      <ellipse cx="20" cy="34" rx="14" ry="10" fill="#1e3810"/>
+      <ellipse cx="20" cy="24" rx="12" ry="10" fill="#2a4e18"/>
+      <ellipse cx="20" cy="15" rx="10" ry="9" fill="#3a6422"/>
+      <ellipse cx="20" cy="7" rx="7" ry="7" fill="#4a7a2c"/>
+      <ellipse cx="11" cy="20" rx="7" ry="6" fill="#2a4e18"/>
+      <ellipse cx="29" cy="20" rx="7" ry="6" fill="#2a4e18"/>
     </svg>
   );
 }
@@ -2569,11 +2711,11 @@ function SkillsButton({ learnedAbilities, abilityChoicePopup, skillsOpen, setSki
       onClick={() => { if (!hasSkills && !hasPending) return; setSkillsOpen(prev => !prev); }}
       style={{
         ...S.btn, flex: 1, padding: "8px 6px", fontSize: 17,
-        boxShadow: hasPending ? "0 0 12px #d4af37cc" : "0 2px 12px #000a",
+        boxShadow: hasPending ? "0 0 12px #b8962acc" : "0 2px 12px #000a",
         background: hasPending ? "linear-gradient(180deg, #2a1e00, #1a1200)"
-          : skillsOpen ? "linear-gradient(180deg, #1a0e2a, #100814)" : "linear-gradient(180deg, #2a1f0e, #1a140a)",
-        borderColor: hasPending ? "#d4af37" : skillsOpen ? "#a855f7" : (hasSkills ? "#a855f7" : "#555"),
-        color: hasPending ? "#d4af37" : skillsOpen ? "#a855f7" : (hasSkills ? "#a855f7" : "#555"),
+          : skillsOpen ? "linear-gradient(180deg, #1a0e2a, #100814)" : "linear-gradient(180deg, #1e1510, #110d08)",
+        borderColor: hasPending ? "#b8962a" : skillsOpen ? "#a855f7" : (hasSkills ? "#a855f7" : "#555"),
+        color: hasPending ? "#b8962a" : skillsOpen ? "#a855f7" : (hasSkills ? "#a855f7" : "#555"),
         opacity: (hasSkills || hasPending) ? 1 : 0.35,
         cursor: (hasSkills || hasPending) ? "pointer" : "not-allowed",
         animation: hasPending ? "pulse 1.2s ease-in-out infinite" : "none",
@@ -2608,10 +2750,10 @@ function InventoryPanel({ stackedInventory, inventory, currentCity, useItem, equ
         ? `${item.rarity || "Normal"} • ${item.slot.charAt(0).toUpperCase() + item.slot.slice(1)}${item.bonusDamage > 0 ? ` • +${item.bonusDamage} Dmg` : ""}${item.bonusDefense > 0 ? ` • +${item.bonusDefense} Def` : ""}${item.itemLevel ? ` • Lvl ${item.itemLevel}` : ""}`
         : item.type === "deliveryitem" ? "📬 Delivery" : "Quest Item";
     return (
-      <div key={stack.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid #d4af3709", gap: 6 }}>
+      <div key={stack.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 0", borderBottom: "1px solid #b8962a09", gap: 6 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 600, color: item.rarityColor || "#e8d7c3", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {item.name}{count > 1 && <span style={{ color: "#d4af37", marginLeft: 5 }}>×{count}</span>}
+            {item.name}{count > 1 && <span style={{ color: "#b8962a", marginLeft: 5 }}>×{count}</span>}
           </div>
           <div style={{ fontSize: 12, opacity: 0.5, marginTop: 1 }}>{subText}</div>
         </div>
@@ -2620,7 +2762,7 @@ function InventoryPanel({ stackedInventory, inventory, currentCity, useItem, equ
             <button onClick={() => useItem(item, idx)} style={{ ...S.btn, ...S.btnSuccess, padding: "3px 8px", fontSize: 12 }}>Use</button>
           )}
           {item.type === "armor" && (
-            <button onClick={() => equipItem(item, idx)} style={{ ...S.btn, padding: "3px 8px", fontSize: 12, borderColor: "#60a5fa88", color: "#60a5fa" }}>Equip</button>
+            <button onClick={() => equipItem(item, idx)} style={{ ...S.btn, padding: "3px 8px", fontSize: 12, borderColor: "#4a7ab888", color: "#4a7ab8" }}>Equip</button>
           )}
           {currentCity && item.type !== "questitem" && item.type !== "deliveryitem" && (
             <button onClick={() => sellItem(idx)} style={{ ...S.btn, padding: "3px 8px", fontSize: 12 }}>{sellValue}g</button>
@@ -2634,14 +2776,14 @@ function InventoryPanel({ stackedInventory, inventory, currentCity, useItem, equ
     <div style={{
       position: "fixed", bottom: 60, left: 8, zIndex: 999,
       width: "calc(25% - 14px)", maxHeight: "70vh", overflowY: "auto",
-      background: "rgba(10,14,39,0.97)", border: "1px solid #d4af3766",
+      background: "rgba(8,6,12,0.97)", border: "1px solid #b8962a66",
       borderRadius: 10, padding: 14, boxShadow: "0 4px 24px #000c",
     }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, paddingBottom: 8, borderBottom: "1px solid #d4af3722" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, paddingBottom: 8, borderBottom: "1px solid #b8962a22" }}>
         <span style={{ ...S.gold, fontSize: 17, fontWeight: 700 }}>🎒 Bag</span>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontSize: 12, opacity: 0.5 }}>{getUniqueStacks(inventory)}/{INVENTORY_CAPACITY}</span>
-          <button onClick={() => setInventoryOpen(false)} style={{ background: "none", border: "none", color: "#e8d7c3", cursor: "pointer", fontSize: 18, padding: 0 }}>✕</button>
+          <button onClick={() => setInventoryOpen(false)} style={{ background: "none", border: "none", color: "#c8bfb0", cursor: "pointer", fontSize: 18, padding: 0 }}>✕</button>
         </div>
       </div>
       {stackedInventory.length === 0 && <div style={{ opacity: 0.5, fontSize: 14, textAlign: "center", padding: 12 }}>Bag is empty.</div>}
@@ -2676,14 +2818,14 @@ function AbilityCards({ abilityChoicePopup, learnAbility }) {
     const desc = effectDesc(ability);
     return (
       <button key={ability.id} onClick={() => learnAbility(ability.id, type)}
-        style={{ display: "block", width: "100%", padding: "12px 14px", marginBottom: 10, borderRadius: 8, background: bg, border: `1px solid ${accent}55`, color: "#e8d7c3", cursor: "pointer", textAlign: "left", transition: "all 0.2s" }}
+        style={{ display: "block", width: "100%", padding: "12px 14px", marginBottom: 10, borderRadius: 8, background: bg, border: `1px solid ${accent}55`, color: "#c8bfb0", cursor: "pointer", textAlign: "left", transition: "all 0.2s" }}
         onMouseEnter={e => { e.currentTarget.style.background = `${accent}22`; e.currentTarget.style.boxShadow = `0 0 14px ${accent}44`; }}
         onMouseLeave={e => { e.currentTarget.style.background = bg; e.currentTarget.style.boxShadow = "none"; }}
       >
         <div style={{ fontWeight: 700, fontSize: 16, color: accent, marginBottom: 6 }}>{ability.name}</div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: desc ? 6 : 0 }}>
-          {isSpell ? tag(`${ability.manaCost} Mana`, "#60a5fa", "#60a5fa11") : tag(`${Math.round(ability.hpCostPercent * 100)}% HP`, "#f87171", "#f8717111")}
-          {ability.dmgRange && ability.dmgRange[1] > 0 && tag(`${ability.dmgRange[0]}–${ability.dmgRange[1]} Dmg`, "#ef4444", "#ef444411")}
+          {isSpell ? tag(`${ability.manaCost} Mana`, "#4a7ab8", "#4a7ab811") : tag(`${Math.round(ability.hpCostPercent * 100)}% HP`, "#f87171", "#f8717111")}
+          {ability.dmgRange && ability.dmgRange[1] > 0 && tag(`${ability.dmgRange[0]}–${ability.dmgRange[1]} Dmg`, "#c04848", "#c0484811")}
           {ability.hitCount && tag(`×${ability.hitCount} Hits`, "#fbbf24", "#fbbf2411")}
           {desc && tag(desc, "#c084fc", "#c084fc11")}
         </div>
@@ -2710,7 +2852,7 @@ function AbilityCards({ abilityChoicePopup, learnAbility }) {
 
 function EnemyLevelBadge({ enemyLevel, playerLevel }) {
   const diff = enemyLevel - playerLevel;
-  const lvColor = diff <= -5 ? "#6b7280" : diff <= -2 ? "#4ade80" : diff <= 2 ? "#facc15" : diff <= 5 ? "#fb923c" : "#ef4444";
+  const lvColor = diff <= -5 ? "#6b7280" : diff <= -2 ? "#3aaa60" : diff <= 2 ? "#facc15" : diff <= 5 ? "#fb923c" : "#c04848";
   return <div style={{ fontSize: 12, fontWeight: 700, color: lvColor, letterSpacing: 1 }}>Lv.{enemyLevel}</div>;
 }
 
@@ -2724,11 +2866,11 @@ function CombatItemsPanel({ inventory, useItemInCombat }) {
     else { const entry = { item, idx: i, count: 1 }; seen.set(item.name, entry); consumables.push(entry); }
   }
   return (
-    <div style={{ background: "#ffffff06", borderRadius: 8, padding: 10, marginBottom: 12, border: "1px solid #4ade8033" }}>
+    <div style={{ background: "#ffffff06", borderRadius: 8, padding: 10, marginBottom: 12, border: "1px solid #3aaa6033" }}>
       <div style={{ fontSize: 14, opacity: 0.5, marginBottom: 6 }}>Use an item (costs your turn):</div>
       {consumables.length === 0 && <div style={{ fontSize: 15, opacity: 0.4 }}>No consumables available.</div>}
       {consumables.map(({ item, idx, count }) => (
-        <div key={item.name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 0", borderBottom: "1px solid #d4af3711" }}>
+        <div key={item.name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 0", borderBottom: "1px solid #b8962a11" }}>
           <div>
             <span style={{ fontSize: 15, fontWeight: 600 }}>{item.name}</span>
             {count > 1 && <span style={{ fontSize: 14, fontWeight: 700, ...S.gold, marginLeft: 6 }}>×{count}</span>}
@@ -2749,16 +2891,16 @@ function CaveQuestBanner({ quests, caveConfirm, getQuestProgress }) {
   );
   if (!relatedQuest) return null;
   if (!relatedQuest.accepted) return (
-    <div style={{ background: "#d4af3722", borderLeft: "4px solid #d4af37", padding: 12, borderRadius: 6, marginBottom: 16, fontSize: 14, textAlign: "left" }}>
-      <div style={{ fontWeight: 600, color: "#d4af37", marginBottom: 4 }}>📜 Quest Available</div>
-      <div style={{ opacity: 0.8 }}>A quest awaits in the nearby town:<br/><span style={{ color: "#d4af37", fontWeight: 500 }}>"{relatedQuest.title}"</span></div>
+    <div style={{ background: "#b8962a22", borderLeft: "4px solid #b8962a", padding: 12, borderRadius: 6, marginBottom: 16, fontSize: 14, textAlign: "left" }}>
+      <div style={{ fontWeight: 600, color: "#b8962a", marginBottom: 4 }}>📜 Quest Available</div>
+      <div style={{ opacity: 0.8 }}>A quest awaits in the nearby town:<br/><span style={{ color: "#b8962a", fontWeight: 500 }}>"{relatedQuest.title}"</span></div>
     </div>
   );
   const progress = getQuestProgress(relatedQuest);
   return (
-    <div style={{ background: "#4ade8022", borderLeft: "4px solid #4ade80", padding: 12, borderRadius: 6, marginBottom: 16, fontSize: 14, textAlign: "left" }}>
-      <div style={{ fontWeight: 600, color: "#4ade80", marginBottom: 4 }}>⚔️ Quest Active</div>
-      <div style={{ opacity: 0.8 }}>{relatedQuest.title}<br/><span style={{ color: "#4ade80" }}>Progress: {progress}/{relatedQuest.targetBosses}</span></div>
+    <div style={{ background: "#3aaa6022", borderLeft: "4px solid #3aaa60", padding: 12, borderRadius: 6, marginBottom: 16, fontSize: 14, textAlign: "left" }}>
+      <div style={{ fontWeight: 600, color: "#3aaa60", marginBottom: 4 }}>⚔️ Quest Active</div>
+      <div style={{ opacity: 0.8 }}>{relatedQuest.title}<br/><span style={{ color: "#3aaa60" }}>Progress: {progress}/{relatedQuest.targetBosses}</span></div>
     </div>
   );
 }
@@ -2767,11 +2909,11 @@ function SkillsPanel({ learnedAbilities, onClose }) {
   const tag = (label, cls) => (
     <span style={{
       fontSize: 11, padding: "2px 7px", borderRadius: 4, fontWeight: 600, whiteSpace: "nowrap",
-      ...(cls === "dmg"    ? { background: "rgba(239,68,68,0.15)",   color: "#ef4444", border: "1px solid rgba(239,68,68,0.3)" }   :
-         cls === "mana"   ? { background: "rgba(65,105,225,0.15)",  color: "#60a5fa", border: "1px solid rgba(65,105,225,0.3)" }  :
+      ...(cls === "dmg"    ? { background: "rgba(239,68,68,0.15)",   color: "#c04848", border: "1px solid rgba(239,68,68,0.3)" }   :
+         cls === "mana"   ? { background: "rgba(65,105,225,0.15)",  color: "#4a7ab8", border: "1px solid rgba(65,105,225,0.3)" }  :
          cls === "hp"     ? { background: "rgba(239,68,68,0.12)",   color: "#f87171", border: "1px solid rgba(239,68,68,0.2)" }   :
          cls === "effect" ? { background: "rgba(168,85,247,0.12)",  color: "#c084fc", border: "1px solid rgba(168,85,247,0.25)" } :
-         cls === "heal"   ? { background: "rgba(74,222,128,0.12)",  color: "#4ade80", border: "1px solid rgba(74,222,128,0.25)" } :
+         cls === "heal"   ? { background: "rgba(74,222,128,0.12)",  color: "#3aaa60", border: "1px solid rgba(74,222,128,0.25)" } :
          cls === "hits"   ? { background: "rgba(251,191,36,0.12)",  color: "#fbbf24", border: "1px solid rgba(251,191,36,0.25)" } :
          cls === "dur"    ? { background: "rgba(148,163,184,0.1)",  color: "#94a3b8", border: "1px solid rgba(148,163,184,0.2)" } :
                             { background: "rgba(255,255,255,0.05)", color: "#9ca3af", border: "1px solid rgba(255,255,255,0.1)" })
@@ -2802,7 +2944,7 @@ function SkillsPanel({ learnedAbilities, onClose }) {
       <div key={s.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 0", borderBottom: "1px solid rgba(212,175,55,0.07)" }}>
         <div style={{ fontSize: 20, width: 28, textAlign: "center", flexShrink: 0, marginTop: 1 }}>{s.name.split(" ")[0]}</div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: "#e8d7c3", marginBottom: 2 }}>{s.name.split(" ").slice(1).join(" ")}</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#c8bfb0", marginBottom: 2 }}>{s.name.split(" ").slice(1).join(" ")}</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
             {s.dmgRange && s.dmgRange[1] > 0 && tag(`${s.dmgRange[0]}–${s.dmgRange[1]} Dmg`, "dmg")}
             {type === "spell"   && tag(`${s.manaCost} Mana`, "mana")}
@@ -2822,12 +2964,12 @@ function SkillsPanel({ learnedAbilities, onClose }) {
     <div style={{
       position: "fixed", bottom: 60, right: 8, zIndex: 999,
       width: "calc(20% - 12px)", maxHeight: "70vh", overflowY: "auto",
-      background: "rgba(10,14,39,0.97)", border: "1px solid rgba(168,85,247,0.4)",
+      background: "rgba(8,6,12,0.97)", border: "1px solid rgba(168,85,247,0.4)",
       borderRadius: 10, padding: 14, boxShadow: "0 4px 24px #000c",
     }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, paddingBottom: 8, borderBottom: "1px solid rgba(168,85,247,0.2)" }}>
         <span style={{ color: "#a855f7", fontSize: 17, fontWeight: 700 }}>✨ Skills</span>
-        <button onClick={onClose} style={{ background: "none", border: "none", color: "#e8d7c3", cursor: "pointer", fontSize: 18, padding: 0 }}>✕</button>
+        <button onClick={onClose} style={{ background: "none", border: "none", color: "#c8bfb0", cursor: "pointer", fontSize: 18, padding: 0 }}>✕</button>
       </div>
       {learnedSpells.length > 0 && <>{sectionLabel("🔵 Spells", "(Mana)")}{learnedSpells.map(s => renderSkill(s, "spell"))}</>}
       {learnedSpecials.length > 0 && <>{sectionLabel("🔴 Specials", "(HP)")}{learnedSpecials.map(s => renderSkill(s, "special"))}</>}
@@ -4776,6 +4918,7 @@ const heroUrl = "hero_sprite.png";
         const isAdjacent = Math.abs(dx) <= 1 && Math.abs(dy) <= 1 && !isPlayer;
         const cityKey = `${tx},${ty}`;
         const isCity = cities[cityKey];
+        const isCityAbove = !!cities[`${tx},${ty - 1}`];
         const isCave = caves[cityKey] && !defeatedBosses.has(cityKey);
         const isDefeatedCave = caves[cityKey] && defeatedBosses.has(cityKey);
         const tileBiome = isValid ? getBiome(tx, ty, worldSeed) : "void";
@@ -4787,8 +4930,8 @@ const heroUrl = "hero_sprite.png";
             onClick={() => isAdjacent && isValid && move(dx, dy)}
             style={{
               width: TILE_PX, height: TILE_PX,
-              background: isValid ? (isCity ? "#d4af3744" : isCave ? "#ef444444" : BIOME_COLORS[tileBiome] + "88") : "#000",
-              border: isPlayer ? "2px solid #d4af37" : isAdjacent ? "1px solid #d4af3744" : "1px solid #0a0e27",
+              background: isValid ? (isCave ? "#c0484855" : BIOME_COLORS[tileBiome] + "cc") : "#050810",
+              border: isPlayer ? "1px solid #b8962a" : isAdjacent ? "1px solid #ffffff18" : "1px solid transparent",
               display: "flex", alignItems: "center", justifyContent: "center",
               fontSize: isPlayer || isCave ? 18 : 13,
               cursor: isAdjacent && isValid ? "pointer" : "default",
@@ -4798,66 +4941,48 @@ const heroUrl = "hero_sprite.png";
               overflow: "visible",
               zIndex: isPlayer ? 10 : isCity ? 5 : isCave ? 5 : 1,
             }}
-            title={isValid ? `${isCity ? `🏰 ${cities[cityKey].name}\n` : ""}${isCave ? `🕳️ ${caves[cityKey].bossName} — Lv.${caves[cityKey].itemLevel}\n` : ""}${tileBiome} (${tileDiff?.name})` : ""}
+            title={isValid ? `${isCity ? `🏰 ${cities[cityKey].name}\n` : ""}${isCave ? `🕳️ ${caves[cityKey].name || caves[cityKey].bossName} — Lv.${caves[cityKey].itemLevel}\n` : ""}${tileBiome} (${tileDiff?.name})` : ""}
           >
-            {isPlayer ? (
-              <svg width={TILE_PX * 1.25} height={TILE_PX * 1.25} viewBox="0 0 90 110" fill="none" style={{overflow:"visible"}}>
-                {/* Cape */}
-                <path d="M38,55 Q22,72 24,105 L38,105 L38,52Z" fill="#8b0000" stroke="#6b0000" strokeWidth="0.8"/>
-                {/* Legs */}
-                <rect x="34" y="82" width="10" height="18" rx="2" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1"/>
-                <rect x="46" y="82" width="10" height="18" rx="2" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1"/>
-                {/* Boots */}
-                <rect x="32" y="94" width="13" height="8" rx="2" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1"/>
-                <rect x="45" y="94" width="13" height="8" rx="2" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1"/>
-                {/* Chest */}
-                <rect x="32" y="54" width="30" height="31" rx="3" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1.2"/>
-                <line x1="47" y1="58" x2="47" y2="82" stroke="#d4af37" strokeWidth="1"/>
-                <line x1="36" y1="68" x2="58" y2="68" stroke="#d4af37" strokeWidth="1"/>
-                {/* Shoulders */}
-                <ellipse cx="30" cy="57" rx="7" ry="5" fill="#3a3a5a" stroke="#6a6a9a" strokeWidth="1"/>
-                <ellipse cx="64" cy="57" rx="7" ry="5" fill="#3a3a5a" stroke="#6a6a9a" strokeWidth="1"/>
-                {/* Arms */}
-                <rect x="22" y="58" width="10" height="20" rx="2" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1"/>
-                <rect x="62" y="58" width="10" height="20" rx="2" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1"/>
-                {/* Sword */}
-                <line x1="69" y1="62" x2="86" y2="28" stroke="#b0b8c8" strokeWidth="2.5" strokeLinecap="round"/>
-                <line x1="64" y1="67" x2="75" y2="57" stroke="#d4af37" strokeWidth="3" strokeLinecap="round"/>
-                {/* Helmet */}
-                <path d="M33,54 Q33,28 47,25 Q61,28 61,54Z" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1.2"/>
-                <rect x="37" y="40" width="20" height="4" rx="2" fill="#0a0a14"/>
-                <path d="M47,25 Q51,12 57,6" fill="none" stroke="#8b0000" strokeWidth="2.5" strokeLinecap="round"/>
-                <path d="M33,54 Q33,28 47,25 Q61,28 61,54" fill="none" stroke="#d4af37" strokeWidth="0.8"/>
+            {isCityAbove && !isPlayer && (
+              <svg width={TILE_PX} height={TILE_PX} viewBox="0 0 40 40" style={{ position: "absolute", inset: 0, zIndex: 2, pointerEvents: "none" }}>
+                <style>{`@keyframes arrowPulse { 0%,100%{opacity:0.4;transform:translateY(4px)} 50%{opacity:1;transform:translateY(0px)} }`}</style>
+                <g style={{ animation: "arrowPulse 1.2s ease-in-out infinite", transformOrigin: "20px 20px" }}>
+                  <polygon points="20,6 32,22 24,22 24,34 16,34 16,22 8,22" fill="#b8962a"/>
+                </g>
               </svg>
-            ) : isCity ? (
-              <svg width={TILE_PX * 1.5625} height={TILE_PX * 1.5625} viewBox="0 0 170 230" fill="none" style={{overflow:"visible", position:"absolute", top:"50%", left:"50%", transform:"translate(-50%,-50%)"}}>
+            )}
+            {isValid && !isPlayer && !isCity && !isCave && !isDefeatedCave && !isCityAbove && tileHasTree(tx, ty, worldSeed, cities) && (
+              <TreeSVG variant={getTreeVariant(tx, ty, worldSeed, tileBiome)} size={TILE_PX * 1.4} />
+            )}
+            {isCity && (
+              <svg width={TILE_PX * 3.125} height={TILE_PX * 3.125} viewBox="0 0 170 230" fill="none" style={{overflow:"visible", position:"absolute", bottom:0, left:"50%", transform:"translateX(-50%)", zIndex: 1}}>
                 {/* Base wall */}
-                <rect x="20" y="110" width="130" height="115" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1.2"/>
+                <rect x="20" y="110" width="130" height="115" fill="#100c18" stroke="#5a5a8a" strokeWidth="1.2"/>
                 <line x1="20" y1="130" x2="150" y2="130" stroke="#2a2a4a" strokeWidth="0.8"/>
                 <line x1="20" y1="152" x2="150" y2="152" stroke="#2a2a4a" strokeWidth="0.8"/>
                 <line x1="20" y1="174" x2="150" y2="174" stroke="#2a2a4a" strokeWidth="0.8"/>
                 {/* Left tower */}
-                <rect x="10" y="85" width="38" height="140" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1.2"/>
-                <rect x="10" y="72" width="10" height="16" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1"/>
-                <rect x="24" y="72" width="10" height="16" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1"/>
+                <rect x="10" y="85" width="38" height="140" fill="#100c18" stroke="#5a5a8a" strokeWidth="1.2"/>
+                <rect x="10" y="72" width="10" height="16" fill="#100c18" stroke="#5a5a8a" strokeWidth="1"/>
+                <rect x="24" y="72" width="10" height="16" fill="#100c18" stroke="#5a5a8a" strokeWidth="1"/>
                 <rect x="14" y="105" width="10" height="14" rx="5" fill="#0a0a14" stroke="#3a3a5a" strokeWidth="0.8"/>
-                <rect x="15" y="106" width="8" height="12" rx="4" fill="#d4af37" opacity="0.6"/>
+                <rect x="15" y="106" width="8" height="12" rx="4" fill="#b8962a" opacity="0.6"/>
                 {/* Right tower */}
-                <rect x="122" y="85" width="38" height="140" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1.2"/>
-                <rect x="126" y="72" width="10" height="16" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1"/>
-                <rect x="140" y="72" width="10" height="16" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1"/>
+                <rect x="122" y="85" width="38" height="140" fill="#100c18" stroke="#5a5a8a" strokeWidth="1.2"/>
+                <rect x="126" y="72" width="10" height="16" fill="#100c18" stroke="#5a5a8a" strokeWidth="1"/>
+                <rect x="140" y="72" width="10" height="16" fill="#100c18" stroke="#5a5a8a" strokeWidth="1"/>
                 <rect x="146" y="105" width="10" height="14" rx="5" fill="#0a0a14" stroke="#3a3a5a" strokeWidth="0.8"/>
                 {/* Center tower */}
-                <rect x="58" y="55" width="54" height="170" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1.2"/>
-                <rect x="58" y="40" width="12" height="18" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1"/>
-                <rect x="76" y="40" width="12" height="18" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1"/>
-                <rect x="94" y="40" width="12" height="18" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1"/>
+                <rect x="58" y="55" width="54" height="170" fill="#100c18" stroke="#5a5a8a" strokeWidth="1.2"/>
+                <rect x="58" y="40" width="12" height="18" fill="#100c18" stroke="#5a5a8a" strokeWidth="1"/>
+                <rect x="76" y="40" width="12" height="18" fill="#100c18" stroke="#5a5a8a" strokeWidth="1"/>
+                <rect x="94" y="40" width="12" height="18" fill="#100c18" stroke="#5a5a8a" strokeWidth="1"/>
                 <rect x="73" y="78" width="24" height="28" rx="12" fill="#0a0a14" stroke="#3a3a5a" strokeWidth="0.8"/>
-                <rect x="74" y="79" width="22" height="26" rx="11" fill="#d4af37" opacity="0.6"/>
+                <rect x="74" y="79" width="22" height="26" rx="11" fill="#b8962a" opacity="0.6"/>
                 <rect x="73" y="118" width="24" height="28" rx="12" fill="#0a0a14" stroke="#3a3a5a" strokeWidth="0.8"/>
                 {/* Gate */}
-                <rect x="73" y="168" width="24" height="57" fill="#080810"/>
-                <path d="M73,188 Q73,168 85,168 Q97,168 97,188" fill="#080810" stroke="#3a3a5a" strokeWidth="0.8"/>
+                <rect x="73" y="168" width="24" height="57" fill="#060408"/>
+                <path d="M73,188 Q73,168 85,168 Q97,168 97,188" fill="#060408" stroke="#3a3a5a" strokeWidth="0.8"/>
                 <line x1="79" y1="170" x2="79" y2="225" stroke="#2a2a3a" strokeWidth="1"/>
                 <line x1="85" y1="170" x2="85" y2="225" stroke="#2a2a3a" strokeWidth="1"/>
                 <line x1="91" y1="170" x2="91" y2="225" stroke="#2a2a3a" strokeWidth="1"/>
@@ -4867,49 +4992,70 @@ const heroUrl = "hero_sprite.png";
                 <line x1="85" y1="5" x2="85" y2="42" stroke="#4a4a6a" strokeWidth="1.2"/>
                 <polygon points="85,5 85,22 100,13" fill="#8b1a1a"/>
               </svg>
-            ) : isCave ? (
-              <svg width={TILE_PX * 1.5625} height={TILE_PX * 1.5625} viewBox="0 0 100 100" fill="none" style={{overflow:"visible", position:"absolute", top:"50%", left:"50%", transform:"translate(-50%,-50%)"}}>
-                {/* Rock mass layers */}
-                <ellipse cx="50" cy="72" rx="48" ry="28" fill="#1a1a2e" stroke="#4a4a6a" strokeWidth="1.2"/>
-                <ellipse cx="50" cy="65" rx="46" ry="34" fill="#1a1a2e" stroke="#4a4a6a" strokeWidth="1"/>
-                <ellipse cx="38" cy="55" rx="30" ry="26" fill="#1a1a2e" stroke="#4a4a6a" strokeWidth="0.8"/>
-                <ellipse cx="62" cy="52" rx="28" ry="24" fill="#1a1a2e" stroke="#4a4a6a" strokeWidth="0.8"/>
-                {/* Cave opening */}
-                <ellipse cx="50" cy="76" rx="22" ry="16" fill="#080810"/>
-                <path d="M28,76 Q28,56 50,53 Q72,56 72,76" fill="#080810"/>
-                <ellipse cx="50" cy="78" rx="18" ry="12" fill="#030308"/>
-                {/* Stalactites */}
-                <polygon points="36,56 39,70 42,56" fill="#141428"/>
-                <polygon points="46,53 49,68 52,53" fill="#141428"/>
-                <polygon points="56,54 59,69 62,54" fill="#141428"/>
-                {/* Eerie glow */}
-                <ellipse cx="50" cy="80" rx="12" ry="6" fill="#8b0000" opacity="0.3"/>
-                {/* Rock texture */}
-                <line x1="10" y1="68" x2="20" y2="60" stroke="#2a2a4a" strokeWidth="0.8"/>
-                <line x1="76" y1="62" x2="88" y2="70" stroke="#2a2a4a" strokeWidth="0.8"/>
+            )}
+            {(isCave || isDefeatedCave) && !isPlayer && (
+              isCave ? (
+                <svg width={TILE_PX * 1.5625} height={TILE_PX * 1.5625} viewBox="0 0 100 100" fill="none" style={{overflow:"visible", position:"absolute", top:"50%", left:"50%", transform:"translate(-50%,-50%)"}}>
+                  <ellipse cx="50" cy="72" rx="48" ry="28" fill="#100c18" stroke="#4a4a6a" strokeWidth="1.2"/>
+                  <ellipse cx="50" cy="65" rx="46" ry="34" fill="#100c18" stroke="#4a4a6a" strokeWidth="1"/>
+                  <ellipse cx="38" cy="55" rx="30" ry="26" fill="#100c18" stroke="#4a4a6a" strokeWidth="0.8"/>
+                  <ellipse cx="62" cy="52" rx="28" ry="24" fill="#100c18" stroke="#4a4a6a" strokeWidth="0.8"/>
+                  <ellipse cx="50" cy="76" rx="22" ry="16" fill="#060408"/>
+                  <path d="M28,76 Q28,56 50,53 Q72,56 72,76" fill="#060408"/>
+                  <ellipse cx="50" cy="78" rx="18" ry="12" fill="#020204"/>
+                  <polygon points="36,56 39,70 42,56" fill="#141428"/>
+                  <polygon points="46,53 49,68 52,53" fill="#141428"/>
+                  <polygon points="56,54 59,69 62,54" fill="#141428"/>
+                  <ellipse cx="50" cy="80" rx="12" ry="6" fill="#8b0000" opacity="0.3"/>
+                  <line x1="10" y1="68" x2="20" y2="60" stroke="#2a2a4a" strokeWidth="0.8"/>
+                  <line x1="76" y1="62" x2="88" y2="70" stroke="#2a2a4a" strokeWidth="0.8"/>
+                </svg>
+              ) : (
+                <svg width={TILE_PX * 1.25} height={TILE_PX * 1.25} viewBox="0 0 80 100" fill="none" style={{overflow:"visible"}}>
+                  <ellipse cx="40" cy="42" rx="28" ry="26" fill="#c8c0a0" stroke="#a09080" strokeWidth="1"/>
+                  <rect x="20" y="56" width="40" height="18" rx="3" fill="#c8c0a0" stroke="#a09080" strokeWidth="1"/>
+                  <rect x="23" y="67" width="6" height="9" rx="1" fill="#08060e"/>
+                  <rect x="32" y="67" width="6" height="9" rx="1" fill="#08060e"/>
+                  <rect x="41" y="67" width="6" height="9" rx="1" fill="#08060e"/>
+                  <rect x="50" y="67" width="6" height="9" rx="1" fill="#08060e"/>
+                  <ellipse cx="30" cy="42" rx="9" ry="10" fill="#08060e"/>
+                  <ellipse cx="50" cy="42" rx="9" ry="10" fill="#08060e"/>
+                  <path d="M36,56 L40,50 L44,56 Z" fill="#08060e"/>
+                  <line x1="20" y1="65" x2="60" y2="65" stroke="#a09080" strokeWidth="0.8"/>
+                  <path d="M40,17 L37,28 L42,36 L38,46" fill="none" stroke="#a09080" strokeWidth="1.2"/>
+                </svg>
+              )
+            )}
+            {isPlayer ? (
+              <svg width={TILE_PX * 1.25} height={TILE_PX * 1.25} viewBox="0 0 90 110" fill="none" style={{overflow:"visible", position:"relative", zIndex: 2}}>
+                {/* Cape */}
+                <path d="M38,55 Q22,72 24,105 L38,105 L38,52Z" fill="#8b0000" stroke="#6b0000" strokeWidth="0.8"/>
+                {/* Legs */}
+                <rect x="34" y="82" width="10" height="18" rx="2" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1"/>
+                <rect x="46" y="82" width="10" height="18" rx="2" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1"/>
+                {/* Boots */}
+                <rect x="32" y="94" width="13" height="8" rx="2" fill="#100c18" stroke="#5a5a8a" strokeWidth="1"/>
+                <rect x="45" y="94" width="13" height="8" rx="2" fill="#100c18" stroke="#5a5a8a" strokeWidth="1"/>
+                {/* Chest */}
+                <rect x="32" y="54" width="30" height="31" rx="3" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1.2"/>
+                <line x1="47" y1="58" x2="47" y2="82" stroke="#b8962a" strokeWidth="1"/>
+                <line x1="36" y1="68" x2="58" y2="68" stroke="#b8962a" strokeWidth="1"/>
+                {/* Shoulders */}
+                <ellipse cx="30" cy="57" rx="7" ry="5" fill="#3a3a5a" stroke="#6a6a9a" strokeWidth="1"/>
+                <ellipse cx="64" cy="57" rx="7" ry="5" fill="#3a3a5a" stroke="#6a6a9a" strokeWidth="1"/>
+                {/* Arms */}
+                <rect x="22" y="58" width="10" height="20" rx="2" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1"/>
+                <rect x="62" y="58" width="10" height="20" rx="2" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1"/>
+                {/* Sword */}
+                <line x1="69" y1="62" x2="86" y2="28" stroke="#b0b8c8" strokeWidth="2.5" strokeLinecap="round"/>
+                <line x1="64" y1="67" x2="75" y2="57" stroke="#b8962a" strokeWidth="3" strokeLinecap="round"/>
+                {/* Helmet */}
+                <path d="M33,54 Q33,28 47,25 Q61,28 61,54Z" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1.2"/>
+                <rect x="37" y="40" width="20" height="4" rx="2" fill="#0a0a14"/>
+                <path d="M47,25 Q51,12 57,6" fill="none" stroke="#8b0000" strokeWidth="2.5" strokeLinecap="round"/>
+                <path d="M33,54 Q33,28 47,25 Q61,28 61,54" fill="none" stroke="#b8962a" strokeWidth="0.8"/>
               </svg>
-            ) : isDefeatedCave ? (
-              <svg width={TILE_PX * 1.25} height={TILE_PX * 1.25} viewBox="0 0 80 100" fill="none" style={{overflow:"visible"}}>
-                {/* Skull dome */}
-                <ellipse cx="40" cy="42" rx="28" ry="26" fill="#c8c0a0" stroke="#a09080" strokeWidth="1"/>
-                {/* Jaw */}
-                <rect x="20" y="56" width="40" height="18" rx="3" fill="#c8c0a0" stroke="#a09080" strokeWidth="1"/>
-                {/* Teeth */}
-                <rect x="23" y="67" width="6" height="9" rx="1" fill="#0d0d1a"/>
-                <rect x="32" y="67" width="6" height="9" rx="1" fill="#0d0d1a"/>
-                <rect x="41" y="67" width="6" height="9" rx="1" fill="#0d0d1a"/>
-                <rect x="50" y="67" width="6" height="9" rx="1" fill="#0d0d1a"/>
-                {/* Eye sockets */}
-                <ellipse cx="30" cy="42" rx="9" ry="10" fill="#0d0d1a"/>
-                <ellipse cx="50" cy="42" rx="9" ry="10" fill="#0d0d1a"/>
-                {/* Nose */}
-                <path d="M36,56 L40,50 L44,56 Z" fill="#0d0d1a"/>
-                {/* Jaw line */}
-                <line x1="20" y1="65" x2="60" y2="65" stroke="#a09080" strokeWidth="0.8"/>
-                {/* Crack */}
-                <path d="M40,17 L37,28 L42,36 L38,46" fill="none" stroke="#a09080" strokeWidth="1.2"/>
-              </svg>
-            ) : ""}
+            ) : null}
           </div>
         );
       }
@@ -4924,7 +5070,7 @@ const heroUrl = "hero_sprite.png";
       <div style={{
         position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 1000,
         display: "flex", gap: 8, padding: "8px 12px",
-        background: "rgba(10,14,39,0.92)", borderTop: "1px solid #d4af3733",
+        background: "rgba(8,6,12,0.92)", borderTop: "1px solid #b8962a33",
         backdropFilter: "blur(6px)",
       }}>
         <button
@@ -4932,16 +5078,16 @@ const heroUrl = "hero_sprite.png";
           style={{
             ...S.btn, flex: 1, padding: "8px 6px", fontSize: 17, position: "relative",
             boxShadow: "0 2px 12px #000a",
-            background: inventoryOpen ? "linear-gradient(180deg, #1a200e, #101508)" : "linear-gradient(180deg, #2a1f0e, #1a140a)",
-            borderColor: inventoryOpen ? "#f59e0b" : "#d4af37",
-            color: inventoryOpen ? "#f59e0b" : "#d4af37",
+            background: inventoryOpen ? "linear-gradient(180deg, #1a200e, #101508)" : "linear-gradient(180deg, #1e1510, #110d08)",
+            borderColor: inventoryOpen ? "#f59e0b" : "#b8962a",
+            color: inventoryOpen ? "#f59e0b" : "#b8962a",
           }}
         >
           🎒 Bag
           {inventory.length > 0 && (
             <span style={{
               position: "absolute", top: -6, right: -6,
-              background: "#d4af37", color: "#0a0e27", borderRadius: "50%",
+              background: "#b8962a", color: "#09080f", borderRadius: "50%",
               minWidth: 20, height: 20, display: "flex", alignItems: "center", justifyContent: "center",
               fontSize: 12, fontWeight: 700, padding: "0 4px",
             }}>{inventory.length}</span>
@@ -4952,16 +5098,16 @@ const heroUrl = "hero_sprite.png";
           style={{
             ...S.btn, flex: 1, padding: "8px 6px", fontSize: 17, position: "relative",
             boxShadow: "0 2px 12px #000a",
-            background: charWindowOpen ? "linear-gradient(180deg, #2a1a0e, #1a1008)" : "linear-gradient(180deg, #2a1f0e, #1a140a)",
-            borderColor: charWindowOpen ? "#f59e0b" : "#d4af37",
-            color: charWindowOpen ? "#f59e0b" : "#d4af37",
+            background: charWindowOpen ? "linear-gradient(180deg, #2a1a0e, #1a1008)" : "linear-gradient(180deg, #1e1510, #110d08)",
+            borderColor: charWindowOpen ? "#f59e0b" : "#b8962a",
+            color: charWindowOpen ? "#f59e0b" : "#b8962a",
           }}
         >
           ⚔️ Character
           {statPoints > 0 && (
             <span style={{
               position: "absolute", top: -6, right: -6,
-              background: "#4ade80", color: "#0a0e27", borderRadius: "50%",
+              background: "#3aaa60", color: "#09080f", borderRadius: "50%",
               width: 20, height: 20, display: "flex", alignItems: "center", justifyContent: "center",
               fontSize: 12, fontWeight: 700,
             }}>{statPoints}</span>
@@ -4972,9 +5118,9 @@ const heroUrl = "hero_sprite.png";
           style={{
             ...S.btn, flex: 1, padding: "8px 6px", fontSize: 17,
             boxShadow: "0 2px 12px #000a",
-            background: worldMapOpen ? "linear-gradient(180deg, #0e1a2a, #081018)" : "linear-gradient(180deg, #2a1f0e, #1a140a)",
-            borderColor: worldMapOpen ? "#60a5fa" : "#d4af37",
-            color: worldMapOpen ? "#60a5fa" : "#d4af37",
+            background: worldMapOpen ? "linear-gradient(180deg, #0e1a2a, #081018)" : "linear-gradient(180deg, #1e1510, #110d08)",
+            borderColor: worldMapOpen ? "#4a7ab8" : "#b8962a",
+            color: worldMapOpen ? "#4a7ab8" : "#b8962a",
           }}
         >
           🗺️ Map
@@ -4984,9 +5130,9 @@ const heroUrl = "hero_sprite.png";
           style={{
             ...S.btn, flex: 1, padding: "8px 6px", fontSize: 17,
             boxShadow: "0 2px 12px #000a",
-            background: questLogOpen ? "linear-gradient(180deg, #1a2a0e, #0f1a08)" : "linear-gradient(180deg, #2a1f0e, #1a140a)",
-            borderColor: questLogOpen ? "#4ade80" : "#d4af37",
-            color: questLogOpen ? "#4ade80" : "#d4af37",
+            background: questLogOpen ? "linear-gradient(180deg, #1a2a0e, #0f1a08)" : "linear-gradient(180deg, #1e1510, #110d08)",
+            borderColor: questLogOpen ? "#3aaa60" : "#b8962a",
+            color: questLogOpen ? "#3aaa60" : "#b8962a",
           }}
         >
           📜 Quests {activeQuests.length > 0 ? `(${activeQuests.length})` : ""}
@@ -4997,12 +5143,12 @@ const heroUrl = "hero_sprite.png";
         <div style={{
           position: "fixed", bottom: 60, right: 8, zIndex: 999,
           width: 380, maxHeight: "60vh", overflowY: "auto",
-          background: "rgba(10,14,39,0.97)", border: "1px solid #d4af3766",
+          background: "rgba(8,6,12,0.97)", border: "1px solid #b8962a66",
           borderRadius: 10, padding: 14, boxShadow: "0 4px 24px #000c",
         }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
             <h3 style={{ ...S.gold, margin: 0, fontSize: 21, display:"flex", alignItems:"center", gap:8 }}><ScrollSVG size={28}/> Quest Log</h3>
-            <button onClick={() => setQuestLogOpen(false)} style={{ background: "none", border: "none", color: "#e8d7c3", cursor: "pointer", fontSize: 21, padding: 0 }}>✕</button>
+            <button onClick={() => setQuestLogOpen(false)} style={{ background: "none", border: "none", color: "#c8bfb0", cursor: "pointer", fontSize: 21, padding: 0 }}>✕</button>
           </div>
           {activeQuests.length === 0 && (
             <div style={{ opacity: 0.5, fontSize: 17, textAlign: "center", padding: 16 }}>No active quests.</div>
@@ -5014,23 +5160,23 @@ const heroUrl = "hero_sprite.png";
             const icon = q.questKind === "kill" ? <KillSVG size={18}/> : q.questKind === "deliver" ? <DeliverSVG size={18}/> : q.questKind === "chunkBossHunt" ? <WeaponSVG size={18}/> : <GatherSVG size={18}/>;
             const pct = (progress / target) * 100;
             return (
-              <div key={q.id} style={{ marginBottom: 10, padding: 8, background: complete ? "#4ade8009" : "#ffffff05", borderRadius: 6, border: `1px solid ${complete ? "#4ade8033" : "#d4af3722"}` }}>
+              <div key={q.id} style={{ marginBottom: 10, padding: 8, background: complete ? "#3aaa6009" : "#ffffff05", borderRadius: 6, border: `1px solid ${complete ? "#3aaa6033" : "#b8962a22"}` }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
                   <span style={{ fontWeight: 600, fontSize: 17 }}>{icon} {q.title}</span>
-                  <span style={S.badge(q.type === "questgiver" ? "#d4af37" : "#60a5fa")}>{q.type === "questgiver" ? "Questgiver" : "Bulletin"}</span>
+                  <span style={S.badge(q.type === "questgiver" ? "#b8962a" : "#4a7ab8")}>{q.type === "questgiver" ? "Questgiver" : "Bulletin"}</span>
                 </div>
                 <div style={{ fontSize: 17, opacity: 0.6, marginBottom: 4 }}>{q.description}</div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
-                  <div style={{ flex: 1, height: 8, background: "#1a1a2e", borderRadius: 4, overflow: "hidden", border: "1px solid #d4af3722" }}>
-                    <div style={{ width: `${pct}%`, height: "100%", background: complete ? "#4ade80" : "#d4af37", transition: "width 0.3s", borderRadius: 3 }} />
+                  <div style={{ flex: 1, height: 8, background: "#100c18", borderRadius: 4, overflow: "hidden", border: "1px solid #b8962a22" }}>
+                    <div style={{ width: `${pct}%`, height: "100%", background: complete ? "#3aaa60" : "#b8962a", transition: "width 0.3s", borderRadius: 3 }} />
                   </div>
-                  <span style={{ fontSize: 17, fontWeight: 700, color: complete ? "#4ade80" : "#e8d7c3", minWidth: 36, textAlign: "right" }}>{progress}/{target}</span>
+                  <span style={{ fontSize: 17, fontWeight: 700, color: complete ? "#3aaa60" : "#e8d7c3", minWidth: 36, textAlign: "right" }}>{progress}/{target}</span>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: 17, marginBottom: 6 }}>
                   <span style={{ opacity: 0.5 }}>📍 {q.questKind === "deliver" ? `→ ${q.targetCity} (${q.targetCityX}, ${q.targetCityY})` : `${q.originCity} (${q.originX}, ${q.originY})`}</span>
                   <span style={S.gold}><MerchantSVG size={16}/> {q.goldReward}g  ✨ {q.xpReward} XP</span>
                 </div>
-                {complete && <div style={{ fontSize: 17, color: "#4ade80", fontWeight: 600, marginBottom: 6 }}>✅ Ready to turn in at {q.questKind === "deliver" ? `${q.targetCity} (${q.targetCityX}, ${q.targetCityY})` : `${q.originCity} (${q.originX}, ${q.originY})`}</div>}
+                {complete && <div style={{ fontSize: 17, color: "#3aaa60", fontWeight: 600, marginBottom: 6 }}>✅ Ready to turn in at {q.questKind === "deliver" ? `${q.targetCity} (${q.targetCityX}, ${q.targetCityY})` : `${q.originCity} (${q.originX}, ${q.originY})`}</div>}
                 {/* ✅ NEW: Abort Button */}
                 <button 
                   onClick={() => setQuests(prev => prev.map(qu => qu.id === q.id ? { ...qu, accepted: false } : qu))}
@@ -5041,7 +5187,7 @@ const heroUrl = "hero_sprite.png";
                     background: "rgba(239,68,68,0.15)",
                     border: "1px solid rgba(239,68,68,0.5)",
                     borderRadius: 4,
-                    color: "#ef4444",
+                    color: "#c04848",
                     cursor: "pointer",
                     fontWeight: 600,
                     transition: "all 0.2s",
@@ -5064,12 +5210,12 @@ const heroUrl = "hero_sprite.png";
         <div style={{
           position: "fixed", bottom: 60, left: "calc(25% + 8px)", zIndex: 999,
           width: 420, maxHeight: "70vh", overflowY: "auto",
-          background: "rgba(10,14,39,0.97)", border: "1px solid #d4af3766",
+          background: "rgba(8,6,12,0.97)", border: "1px solid #b8962a66",
           borderRadius: 10, padding: 18, boxShadow: "0 4px 24px #000c",
         }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
             <h3 style={{ ...S.gold, margin: 0, fontSize: 24 }}>⚔️ {playerName}</h3>
-            <button onClick={() => setCharWindowOpen(false)} style={{ background: "none", border: "none", color: "#e8d7c3", cursor: "pointer", fontSize: 22, padding: 0 }}>✕</button>
+            <button onClick={() => setCharWindowOpen(false)} style={{ background: "none", border: "none", color: "#c8bfb0", cursor: "pointer", fontSize: 22, padding: 0 }}>✕</button>
           </div>
 
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 14, fontSize: 17 }}>
@@ -5082,7 +5228,7 @@ const heroUrl = "hero_sprite.png";
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
               <div style={{ fontSize: 14, opacity: 0.5, textTransform: "uppercase", letterSpacing: 1 }}>Attributes</div>
               {statPoints > 0 && (
-                <span style={{ background: "#4ade8022", color: "#4ade80", border: "1px solid #4ade8055", borderRadius: 6, padding: "3px 10px", fontSize: 14, fontWeight: 700 }}>
+                <span style={{ background: "#3aaa6022", color: "#3aaa60", border: "1px solid #3aaa6055", borderRadius: 6, padding: "3px 10px", fontSize: 14, fontWeight: 700 }}>
                   ✨ {statPoints} point{statPoints > 1 ? "s" : ""} available
                 </span>
               )}
@@ -5103,24 +5249,24 @@ const heroUrl = "hero_sprite.png";
           <div style={{ marginBottom: 16 }}>
             <div style={{ fontSize: 14, opacity: 0.5, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Derived Stats</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-              <div style={{ background: "#ef444411", padding: "10px 12px", borderRadius: 6, border: "1px solid #ef444422", textAlign: "center" }}>
-                <div style={{ fontSize: 22, fontWeight: 700, color: "#ef4444" }}>{hp}/{stats.maxHp}</div>
+              <div style={{ background: "#c0484811", padding: "10px 12px", borderRadius: 6, border: "1px solid #c0484822", textAlign: "center" }}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: "#c04848" }}>{hp}/{stats.maxHp}</div>
                 <div style={{ fontSize: 14, opacity: 0.5 }}>HP</div>
               </div>
               <div style={{ background: "#4169E111", padding: "10px 12px", borderRadius: 6, border: "1px solid #4169E122", textAlign: "center" }}>
                 <div style={{ fontSize: 22, fontWeight: 700, color: "#4169E1" }}>{mana}/{stats.maxMana}</div>
                 <div style={{ fontSize: 14, opacity: 0.5 }}>Mana</div>
               </div>
-              <div style={{ background: "#d4af3711", padding: "10px 12px", borderRadius: 6, border: "1px solid #d4af3722", textAlign: "center" }}>
-                <div style={{ fontSize: 22, fontWeight: 700, color: "#d4af37" }}>{stats.damage}</div>
+              <div style={{ background: "#b8962a11", padding: "10px 12px", borderRadius: 6, border: "1px solid #b8962a22", textAlign: "center" }}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: "#b8962a" }}>{stats.damage}</div>
                 <div style={{ fontSize: 14, opacity: 0.5 }}>Damage</div>
               </div>
-              <div style={{ background: "#60a5fa11", padding: "10px 12px", borderRadius: 6, border: "1px solid #60a5fa22", textAlign: "center" }}>
-                <div style={{ fontSize: 22, fontWeight: 700, color: "#60a5fa" }}>{stats.defense}</div>
+              <div style={{ background: "#4a7ab811", padding: "10px 12px", borderRadius: 6, border: "1px solid #4a7ab822", textAlign: "center" }}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: "#4a7ab8" }}>{stats.defense}</div>
                 <div style={{ fontSize: 14, opacity: 0.5 }}>Defense</div>
               </div>
-              <div style={{ background: "#4ade8011", padding: "10px 12px", borderRadius: 6, border: "1px solid #4ade8022", textAlign: "center" }}>
-                <div style={{ fontSize: 22, fontWeight: 700, color: "#4ade80" }}>{Math.round(stats.dodgeChance * 100)}%</div>
+              <div style={{ background: "#3aaa6011", padding: "10px 12px", borderRadius: 6, border: "1px solid #3aaa6022", textAlign: "center" }}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: "#3aaa60" }}>{Math.round(stats.dodgeChance * 100)}%</div>
                 <div style={{ fontSize: 14, opacity: 0.5 }}>Dodge</div>
               </div>
               <div style={{ background: "#f59e0b11", padding: "10px 12px", borderRadius: 6, border: "1px solid #f59e0b22", textAlign: "center" }}>
@@ -5143,28 +5289,28 @@ const heroUrl = "hero_sprite.png";
               <EquipSlot slot="weapon" item={equipment.weapon} svgIcon={<WeaponSVG size={64}/>} />
               <div style={{
                 width: 105, height: 105, display: "flex", alignItems: "center", justifyContent: "center",
-                background: "radial-gradient(circle, #d4af3711 0%, transparent 70%)",
-                borderRadius: "50%", border: "2px solid #d4af3733",
+                background: "radial-gradient(circle, #b8962a11 0%, transparent 70%)",
+                borderRadius: "50%", border: "2px solid #b8962a33",
               }}>
                 <svg width="96" height="96" viewBox="0 0 90 110" fill="none" style={{overflow:"visible"}}>
                   <path d="M38,55 Q22,72 24,105 L38,105 L38,52Z" fill="#8b0000" stroke="#6b0000" strokeWidth="0.8"/>
                   <rect x="34" y="82" width="10" height="18" rx="2" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1"/>
                   <rect x="46" y="82" width="10" height="18" rx="2" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1"/>
-                  <rect x="32" y="94" width="13" height="8" rx="2" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1"/>
-                  <rect x="45" y="94" width="13" height="8" rx="2" fill="#1a1a2e" stroke="#5a5a8a" strokeWidth="1"/>
+                  <rect x="32" y="94" width="13" height="8" rx="2" fill="#100c18" stroke="#5a5a8a" strokeWidth="1"/>
+                  <rect x="45" y="94" width="13" height="8" rx="2" fill="#100c18" stroke="#5a5a8a" strokeWidth="1"/>
                   <rect x="32" y="54" width="30" height="31" rx="3" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1.2"/>
-                  <line x1="47" y1="58" x2="47" y2="82" stroke="#d4af37" strokeWidth="1"/>
-                  <line x1="36" y1="68" x2="58" y2="68" stroke="#d4af37" strokeWidth="1"/>
+                  <line x1="47" y1="58" x2="47" y2="82" stroke="#b8962a" strokeWidth="1"/>
+                  <line x1="36" y1="68" x2="58" y2="68" stroke="#b8962a" strokeWidth="1"/>
                   <ellipse cx="30" cy="57" rx="7" ry="5" fill="#3a3a5a" stroke="#6a6a9a" strokeWidth="1"/>
                   <ellipse cx="64" cy="57" rx="7" ry="5" fill="#3a3a5a" stroke="#6a6a9a" strokeWidth="1"/>
                   <rect x="22" y="58" width="10" height="20" rx="2" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1"/>
                   <rect x="62" y="58" width="10" height="20" rx="2" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1"/>
                   <line x1="69" y1="62" x2="86" y2="28" stroke="#b0b8c8" strokeWidth="2.5" strokeLinecap="round"/>
-                  <line x1="64" y1="67" x2="75" y2="57" stroke="#d4af37" strokeWidth="3" strokeLinecap="round"/>
+                  <line x1="64" y1="67" x2="75" y2="57" stroke="#b8962a" strokeWidth="3" strokeLinecap="round"/>
                   <path d="M33,54 Q33,28 47,25 Q61,28 61,54Z" fill="#2a2a3e" stroke="#5a5a8a" strokeWidth="1.2"/>
                   <rect x="37" y="40" width="20" height="4" rx="2" fill="#0a0a14"/>
                   <path d="M47,25 Q51,12 57,6" fill="none" stroke="#8b0000" strokeWidth="2.5" strokeLinecap="round"/>
-                  <path d="M33,54 Q33,28 47,25 Q61,28 61,54" fill="none" stroke="#d4af37" strokeWidth="0.8"/>
+                  <path d="M33,54 Q33,28 47,25 Q61,28 61,54" fill="none" stroke="#b8962a" strokeWidth="0.8"/>
                 </svg>
               </div>
               <EquipSlot slot="shield" item={equipment.shield} svgIcon={<ShieldSVG size={64}/>} />
@@ -5177,9 +5323,9 @@ const heroUrl = "hero_sprite.png";
             
             {/* Stats row */}
             <div style={{ textAlign: "center", fontSize: 15, opacity: 0.6, marginTop: 12 }}>
-              <span style={{ color: "#ef4444" }}>⚔️ {stats.damage}</span>
+              <span style={{ color: "#c04848" }}>⚔️ {stats.damage}</span>
               {" "}
-              <span style={{ color: "#60a5fa" }}>🛡️ {stats.defense}</span>
+              <span style={{ color: "#4a7ab8" }}>🛡️ {stats.defense}</span>
             </div>
           </div>
 
@@ -5190,14 +5336,14 @@ const heroUrl = "hero_sprite.png";
               alignItems: "center",
               gap: 8,
               padding: "10px 12px",
-              backgroundColor: "#1a1a2e",
+              backgroundColor: "#100c18",
               borderRadius: 6,
-              borderLeft: "3px solid #d4af37"
+              borderLeft: "3px solid #b8962a"
             }}>
               <span style={{ fontSize: 18 }}>💎</span>
               <div>
                 <div style={{ fontSize: 12, opacity: 0.6, textTransform: "uppercase", letterSpacing: 0.5 }}>Gearscore</div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: "#d4af37" }}>
+                <div style={{ fontSize: 18, fontWeight: 700, color: "#b8962a" }}>
                   <GearScore equipment={equipment} />
                 </div>
               </div>
@@ -5234,11 +5380,11 @@ const heroUrl = "hero_sprite.png";
     canvas.height = size;
 
     const BIOME_HEX = {
-      ocean: "#3a6a8a", coast: "#6aaa8a", river: "#4a8aaa", lake: "#3a7a9a", swamp: "#6a7a4a",
-      desert: "#c4a060", savanna: "#b0a050", grassland: "#7aaa55",
-      forest: "#3a6a30", jungle: "#2a5828",
-      tundra: "#8a9898", mountain: "#8a6a5a",
-      volcanic: "#8a3828", glacier: "#b0c8d8",
+      ocean:     "#1a4a6e", coast:    "#2e7d5e", river:    "#2a6d9e", lake:     "#1e6080",
+      swamp:     "#3d5c2a", desert:   "#c8943a", savanna:  "#a89040",
+      grassland: "#5a9e3a", forest:   "#2a5a22", jungle:   "#1a4a18",
+      tundra:    "#7a8e94", mountain: "#7a6050",
+      volcanic:  "#7a2818", glacier:  "#a8c4d8",
     };
     const step = zoom.px <= 1 ? 2 : 1;
 
@@ -5264,27 +5410,40 @@ const heroUrl = "hero_sprite.png";
           const hasTurnIn = quests.some(q => q.accepted && q.originCity === cities[ck].name && isQuestComplete(q));
           const isVisited = visitedCities.has(cities[ck].name);
           const isDeliveryTarget = quests.some(q => q.accepted && q.questKind === "deliver" && q.targetCityX === tx && q.targetCityY === ty);
-          ctx.fillStyle = hasTurnIn ? "#4ade80" : (isDeliveryTarget ? "#ff88ff" : (isVisited ? "#0088ff" : "#d4af37"));
-          const ms = Math.max(2, zoom.px);
+          const cityColor = hasTurnIn ? "#3aaa60" : isDeliveryTarget ? "#ff88ff" : isVisited ? "#4a7ab8" : "#f0c040";
+          const ms = Math.max(3, zoom.px + 1);
+          // Outer glow ring
+          ctx.fillStyle = cityColor + "55";
+          ctx.fillRect(px - 1, py - 1, ms + 2, ms + 2);
+          // Inner dot
+          ctx.fillStyle = cityColor;
           ctx.fillRect(px, py, ms, ms);
-          // Draw ring around delivery target cities
+          // White center pixel for visibility
+          if (ms >= 4) {
+            ctx.fillStyle = "#ffffff99";
+            ctx.fillRect(px + Math.floor(ms/2) - 1, py + Math.floor(ms/2) - 1, 2, 2);
+          }
           if (isDeliveryTarget) {
             ctx.strokeStyle = "#ff88ff";
-            ctx.lineWidth = 1;
-            const ring = Math.max(3, ms + 2);
-            ctx.strokeRect(px - 1, py - 1, ring, ring);
+            ctx.lineWidth = 1.5;
+            ctx.strokeRect(px - 2, py - 2, ms + 4, ms + 4);
           }
         }
 
         if (caves[ck]) {
           const defeated = defeatedBosses.has(ck);
-          // Color cave dot by its itemLevel tier
           const caveTier = getDifficultyTier(caves[ck].itemLevel || 1);
-          ctx.fillStyle = defeated ? "#666" : (TIER_COLORS[caveTier] || "#ef4444");
-          const ms = Math.max(2, zoom.px);
+          const caveColor = defeated ? "#555" : (TIER_COLORS[caveTier] || "#c04848");
+          const ms = Math.max(3, zoom.px + 1);
+          // Dark bg
+          ctx.fillStyle = "#00000088";
+          ctx.fillRect(px - 1, py - 1, ms + 2, ms + 2);
+          // Colored border
+          ctx.fillStyle = caveColor;
           ctx.fillRect(px, py, ms, ms);
-          ctx.fillStyle = defeated ? "#333" : "#000";
-          const inset = Math.max(1, Math.floor(ms / 4));
+          // Dark hollow center
+          ctx.fillStyle = defeated ? "#33333388" : "#00000088";
+          const inset = Math.max(1, Math.floor(ms / 3));
           ctx.fillRect(px + inset, py + inset, Math.max(1, ms - inset * 2), Math.max(1, ms - inset * 2));
         }
       }
@@ -5292,8 +5451,9 @@ const heroUrl = "hero_sprite.png";
 
     // Draw chunk tier boundaries (thin lines) and labels based on CHUNK_TIERS
     // Only draw lines where biome is NOT ocean
-    ctx.strokeStyle = "#ffffff44";  // Semi-transparent white
+    ctx.strokeStyle = "#ffffff66";
     ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
     
     // Helper function to check if a position is in ocean
     const isOceanBiome = (x, y) => getBiome(x, y, worldSeed) === "ocean";
@@ -5403,6 +5563,7 @@ const heroUrl = "hero_sprite.png";
       }
     }
 
+    ctx.setLineDash([]);
     // Draw chunk level ranges BELOW each chunk center with WHITE TEXT
     ctx.font = "bold 12px Arial";
     ctx.textAlign = "center";
@@ -5418,7 +5579,6 @@ const heroUrl = "hero_sprite.png";
         const px = (dx + zoom.radius) * zoom.px;
         const py = (dy + zoom.radius) * zoom.px;
         
-        // ✅ Draw text BELOW chunk center
         const textY = py + 20;
         const lineHeight = 14;
         
@@ -5437,18 +5597,34 @@ const heroUrl = "hero_sprite.png";
       }
     }
 
-    // Player marker (offset from center based on player pos vs map center)
+    // Player marker
     const playerDx = pos.x - center.x;
     const playerDy = pos.y - center.y;
     if (Math.abs(playerDx) <= zoom.radius && Math.abs(playerDy) <= zoom.radius) {
       const pcx = (playerDx + zoom.radius) * zoom.px;
       const pcy = (playerDy + zoom.radius) * zoom.px;
-      const pSize = Math.max(3, zoom.px + 2);
+      const pSize = Math.max(4, zoom.px + 3);
+      // Outer glow
+      ctx.fillStyle = "#ff333344";
+      ctx.beginPath();
+      ctx.arc(pcx + pSize/2, pcy + pSize/2, pSize, 0, Math.PI * 2);
+      ctx.fill();
+      // White ring
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(pcx + pSize/2, pcy + pSize/2, pSize/2 + 1, 0, Math.PI * 2);
+      ctx.stroke();
+      // Red dot
       ctx.fillStyle = "#ff3333";
-      ctx.fillRect(pcx - 1, pcy - 1, pSize, pSize);
-      ctx.strokeStyle = "#fff";
-      ctx.lineWidth = 1;
-      ctx.strokeRect(pcx - 2, pcy - 2, pSize + 2, pSize + 2);
+      ctx.beginPath();
+      ctx.arc(pcx + pSize/2, pcy + pSize/2, pSize/2, 0, Math.PI * 2);
+      ctx.fill();
+      // White center
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.arc(pcx + pSize/2, pcy + pSize/2, Math.max(1, pSize/4), 0, Math.PI * 2);
+      ctx.fill();
     }
 
   }, [worldMapOpen, mapZoom, mapCenter, pos, worldSeed, cities, caves, defeatedBosses, quests, isQuestComplete]);
@@ -5456,23 +5632,23 @@ const heroUrl = "hero_sprite.png";
   const worldMapOverlay = worldMapOpen && (
     <div style={{
       position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 1100,
-      background: "rgba(5,7,20,0.92)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+      background: "rgba(5,4,8,0.94)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
     }} onClick={() => setWorldMapOpen(false)}>
       <div onClick={e => e.stopPropagation()} style={{
-        background: "rgba(15,20,45,0.98)", border: "1px solid #d4af3766", borderRadius: 12,
+        background: "rgba(10,8,14,0.98)", border: "1px solid #b8962a66", borderRadius: 12,
         padding: 16, boxShadow: "0 8px 32px #000c", maxWidth: "95vw", maxHeight: "90vh", overflow: "auto",
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
           <h3 style={{ ...S.gold, margin: 0, fontSize: 21, display:"flex", alignItems:"center", gap:8 }}>
             <CastleSVG size={28}/> World Map
-            {fastTravelMode && <span style={{ fontSize: 13, color: "#60a5fa", fontWeight: 600, marginLeft: 8 }}>— Click a visited city to travel</span>}
+            {fastTravelMode && <span style={{ fontSize: 13, color: "#4a7ab8", fontWeight: 600, marginLeft: 8 }}>— Click a visited city to travel</span>}
           </h3>
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
             <button onClick={() => { setMapCenter(null); }} style={{ ...S.btn, padding: "4px 10px", fontSize: 14 }}>📍 Player</button>
             <button onClick={() => setMapZoom(z => Math.min(3, z + 1))} style={{ ...S.btn, padding: "4px 10px", fontSize: 18 }} disabled={mapZoom >= 3}>🔍+</button>
             <span style={{ fontSize: 13, opacity: 0.5, minWidth: 32, textAlign: "center" }}>{MAP_ZOOM_LEVELS[mapZoom]?.label}</span>
             <button onClick={() => setMapZoom(z => Math.max(0, z - 1))} style={{ ...S.btn, padding: "4px 10px", fontSize: 18 }} disabled={mapZoom <= 0}>🔍−</button>
-            <button onClick={() => { setWorldMapOpen(false); setMapCenter(null); setFastTravelMode(false); }} style={{ background: "none", border: "none", color: "#e8d7c3", cursor: "pointer", fontSize: 28, padding: 0, marginLeft: 8 }}>✕</button>
+            <button onClick={() => { setWorldMapOpen(false); setMapCenter(null); setFastTravelMode(false); }} style={{ background: "none", border: "none", color: "#c8bfb0", cursor: "pointer", fontSize: 28, padding: 0, marginLeft: 8 }}>✕</button>
           </div>
         </div>
         <div style={{ display: "flex", justifyContent: "center", position: "relative" }}
@@ -5499,7 +5675,7 @@ const heroUrl = "hero_sprite.png";
                 }
                 if (caves[ck] && dist < closestDist) {
                   closestDist = dist;
-                  closest = { type: "cave", name: caves[ck].bossName, level: caves[ck].itemLevel };
+                  closest = { type: "cave", name: caves[ck].name || caves[ck].bossName, level: caves[ck].itemLevel };
                 }
               }
             }
@@ -5534,7 +5710,7 @@ const heroUrl = "hero_sprite.png";
             setMapZoom(newZoom);
           }}
         >
-          <canvas ref={bigMapCanvasRef} style={{ borderRadius: 6, border: "1px solid #d4af3733", imageRendering: "pixelated", cursor: fastTravelMode ? "pointer" : "default" }}
+          <canvas ref={bigMapCanvasRef} style={{ borderRadius: 6, border: "1px solid #b8962a33", imageRendering: "pixelated", cursor: fastTravelMode ? "pointer" : "default" }}
             onClick={e => {
               if (!fastTravelMode) return;
               const rect = bigMapCanvasRef.current?.getBoundingClientRect();
@@ -5564,9 +5740,9 @@ const heroUrl = "hero_sprite.png";
         {mapTooltip && (
           <div style={{
             position: "fixed", left: mapTooltip.x + 12, top: mapTooltip.y - 10,
-            background: "rgba(5,8,25,0.95)", border: `1px solid ${mapTooltip.type === "cave" ? "#ef4444" : "#d4af37"}`,
+            background: "rgba(5,4,8,0.97)", border: `1px solid ${mapTooltip.type === "cave" ? "#c04848" : "#b8962a"}`,
             borderRadius: 6, padding: "4px 10px", fontSize: 14, fontWeight: 600,
-            color: mapTooltip.type === "cave" ? "#ef4444" : "#d4af37",
+            color: mapTooltip.type === "cave" ? "#c04848" : "#b8962a",
             pointerEvents: "none", zIndex: 9999,
             boxShadow: "0 2px 8px #000a",
           }}>
@@ -5583,8 +5759,8 @@ const heroUrl = "hero_sprite.png";
         )}
         <div style={{ display: "flex", gap: 16, justifyContent: "center", marginTop: 10, fontSize: 15, opacity: 0.7, flexWrap: "wrap" }}>
           <span>🔴 You</span>
-          <span style={{ color: "#d4af37" }}>■ City</span>
-          <span style={{ color: "#4ade80" }}>■ Quest turn-in</span>
+          <span style={{ color: "#b8962a" }}>■ City</span>
+          <span style={{ color: "#3aaa60" }}>■ Quest turn-in</span>
           <span style={{ color: "#ff88ff" }}>■ Delivery target</span>
           <span>📍 {pos.x}, {pos.y}</span>
           <span style={S.badge(difficulty.color)}>{difficulty.name}</span>
@@ -5595,14 +5771,14 @@ const heroUrl = "hero_sprite.png";
             .filter(c => visitedCities.has(c.name) && c.name !== currentCity?.name)
             .sort((a, b) => a.name.localeCompare(b.name));
           return (
-            <div style={{ marginTop: 14, borderTop: "1px solid #d4af3733", paddingTop: 12 }}>
-              <div style={{ fontSize: 13, color: "#60a5fa", fontWeight: 600, marginBottom: 8 }}>
+            <div style={{ marginTop: 14, borderTop: "1px solid #b8962a33", paddingTop: 12 }}>
+              <div style={{ fontSize: 13, color: "#4a7ab8", fontWeight: 600, marginBottom: 8 }}>
                 Visited Cities — click to travel
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 160, overflowY: "auto" }}>
                 {visitedList.map(c => (
                   <button key={c.name} onClick={() => setFastTravelConfirm({ name: c.name, x: c.x, y: c.y })}
-                    style={{ ...S.btn, padding: "4px 10px", fontSize: 13, display: "flex", alignItems: "center", gap: 5, borderColor: "#60a5fa55", color: "#60a5fa" }}>
+                    style={{ ...S.btn, padding: "4px 10px", fontSize: 13, display: "flex", alignItems: "center", gap: 5, borderColor: "#4a7ab855", color: "#4a7ab8" }}>
                     <CastleSVG size={13} />{c.name}
                   </button>
                 ))}
@@ -5624,7 +5800,7 @@ const heroUrl = "hero_sprite.png";
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1200 }}
           onClick={() => setFastTravelConfirm(null)}>
           <div onClick={e => e.stopPropagation()} style={{
-            background: "rgba(15,20,45,0.99)", border: "1px solid #60a5fa88", borderRadius: 10,
+            background: "rgba(10,8,14,0.99)", border: "1px solid #4a7ab888", borderRadius: 10,
             padding: "24px 28px", textAlign: "center", minWidth: 260, boxShadow: "0 8px 32px #000c",
           }}>
             <CastleSVG size={48}/>
@@ -5656,14 +5832,14 @@ const heroUrl = "hero_sprite.png";
     }}>
       <div onClick={e => e.stopPropagation()} style={{
         ...S.panel, maxWidth: 380, width: "90%", textAlign: "center",
-        border: "2px solid #d4af37", boxShadow: "0 0 40px #d4af3744",
+        border: "2px solid #b8962a", boxShadow: "0 0 40px #b8962a44",
         animation: "none",
       }}>
         <div style={{ fontSize: 52, marginBottom: 4 }}>🎉</div>
         <h2 style={{ ...S.gold, margin: "0 0 6px 0", fontSize: 28 }}>Level Up!</h2>
-        <div style={{ fontSize: 42, fontWeight: 800, color: "#d4af37", marginBottom: 6 }}>{levelUpMsg}</div>
+        <div style={{ fontSize: 42, fontWeight: 800, color: "#b8962a", marginBottom: 6 }}>{levelUpMsg}</div>
         <div style={{ fontSize: 17, opacity: 0.7, marginBottom: 4 }}>HP & Mana fully restored</div>
-        <div style={{ fontSize: 17, color: "#4ade80", fontWeight: 600, marginBottom: 12 }}>+2 Stat Points available!</div>
+        <div style={{ fontSize: 17, color: "#3aaa60", fontWeight: 600, marginBottom: 12 }}>+2 Stat Points available!</div>
         <button onClick={() => setLevelUpMsg(null)} style={{ ...S.btn, ...S.btnSuccess, padding: "10px 32px", fontSize: 19 }}>Continue</button>
       </div>
     </div>
@@ -5675,7 +5851,7 @@ const heroUrl = "hero_sprite.png";
     }}>
       <div onClick={e => e.stopPropagation()} style={{
         ...S.panel, maxWidth: 600, width: "90%",
-        border: "2px solid #d4af37", boxShadow: "0 0 40px #d4af3744",
+        border: "2px solid #b8962a", boxShadow: "0 0 40px #b8962a44",
       }}>
         <h2 style={{ ...S.gold, margin: "0 0 16px 0", fontSize: 28, textAlign: "center" }}>✨ Choose a New Ability! ✨</h2>
         
@@ -5691,7 +5867,7 @@ const heroUrl = "hero_sprite.png";
     }}>
       <div style={{
         ...S.panel, maxWidth: 420, width: "90%", textAlign: "center",
-        border: "2px solid #60a5fa", boxShadow: "0 0 40px #60a5fa44",
+        border: "2px solid #4a7ab8", boxShadow: "0 0 40px #4a7ab844",
       }}>
         <div style={{ fontSize: 64, marginBottom: 16, animation: "pulse 1.5s ease-in-out infinite" }}>🧪</div>
         <h2 style={{ ...S.gold, margin: "0 0 16px 0", fontSize: 24 }}>POTION OF PROTECTION</h2>
@@ -5699,9 +5875,9 @@ const heroUrl = "hero_sprite.png";
         <div style={{ fontSize: 16, opacity: 0.8, lineHeight: 1.8, marginBottom: 24 }}>
           You uncork the shimmering<br/>
           potion and drink it...<br/><br/>
-          <span style={{ color: "#60a5fa", fontWeight: 600 }}>✨ A protective aura<br/>
+          <span style={{ color: "#4a7ab8", fontWeight: 600 }}>✨ A protective aura<br/>
           surrounds you!</span><br/><br/>
-          <span style={{ color: "#4ade80", fontSize: 18, fontWeight: 700 }}>💪 "I can feel its power!"</span>
+          <span style={{ color: "#3aaa60", fontSize: 18, fontWeight: 700 }}>💪 "I can feel its power!"</span>
         </div>
       </div>
     </div>
@@ -5713,10 +5889,10 @@ const heroUrl = "hero_sprite.png";
     }}>
       <div style={{
         ...S.panel, maxWidth: 580, width: "92%", textAlign: "center",
-        border: "2px solid #d4af37", boxShadow: "0 0 60px #d4af3755",
+        border: "2px solid #b8962a", boxShadow: "0 0 60px #b8962a55",
       }}>
         <div style={{ fontSize: 52, marginBottom: 10 }}>⚔️</div>
-        <h2 style={{ color: "#d4af37", margin: "0 0 20px 0", fontSize: 28, letterSpacing: 2 }}>Realm of Shadows</h2>
+        <h2 style={{ color: "#b8962a", margin: "0 0 20px 0", fontSize: 28, letterSpacing: 2 }}>Realm of Shadows</h2>
         <div style={{ fontSize: 21, opacity: 0.9, lineHeight: 2, marginBottom: 28, fontStyle: "italic", textAlign: "left" }}>
           <p style={{ marginTop: 0 }}>The cold mud presses against your cheek. You open your eyes.</p>
           <p>The last thing you remember—a cave <CaveSVG size={28} />. Darkness that moved. Claws. The screaming of Monsters. The Realm of Shadows.</p>
@@ -5729,10 +5905,10 @@ const heroUrl = "hero_sprite.png";
           <p style={{ marginBottom: 0, fontWeight: 700, fontSize: 24, fontStyle: "normal" }}>The caves <CaveSVG size={32} /> are still out there. And they are still bleeding.</p>
         </div>
         <button
-          onClick={() => { setIntroPopup(null); setScreen("city"); }}
+          onClick={() => setIntroPopup(null)}
           style={{ ...S.btn, ...S.btnSuccess, padding: "12px 32px", fontSize: 20 }}
         >
-          <CastleSVG size={22} /> Enter {introPopup.name}
+          Continue
         </button>
       </div>
     </div>
@@ -5744,19 +5920,19 @@ const heroUrl = "hero_sprite.png";
     }}>
       <div style={{
         ...S.panel, maxWidth: 460, width: "90%", textAlign: "center",
-        border: "2px solid #ef4444", boxShadow: "0 0 40px #ef444444",
+        border: "2px solid #c04848", boxShadow: "0 0 40px #c0484844",
       }}>
         <div style={{ fontSize: 52, marginBottom: 4 }}>💀</div>
-        <h2 style={{ color: "#ef4444", margin: "0 0 10px 0", fontSize: 26 }}>You Have Fallen</h2>
+        <h2 style={{ color: "#c04848", margin: "0 0 10px 0", fontSize: 26 }}>You Have Fallen</h2>
         <div style={{ fontSize: 16, opacity: 0.8, lineHeight: 1.6, marginBottom: 14, fontStyle: "italic" }}>
           {deathPopup.story}
         </div>
-        <div style={{ fontSize: 15, opacity: 0.6, marginBottom: 6, borderTop: "1px solid #ef444433", paddingTop: 10 }}>
-          Lost <span style={{ color: "#d4af37", fontWeight: 700 }}>{deathPopup.goldLost} gold</span> and <span style={{ color: "#ef4444", fontWeight: 700 }}>{deathPopup.itemsLost} item{deathPopup.itemsLost !== 1 ? "s" : ""}</span>
+        <div style={{ fontSize: 15, opacity: 0.6, marginBottom: 6, borderTop: "1px solid #c0484833", paddingTop: 10 }}>
+          Lost <span style={{ color: "#b8962a", fontWeight: 700 }}>{deathPopup.goldLost} gold</span> and <span style={{ color: "#c04848", fontWeight: 700 }}>{deathPopup.itemsLost} item{deathPopup.itemsLost !== 1 ? "s" : ""}</span>
         </div>
         <div style={{ fontSize: 15, opacity: 0.6, marginBottom: 14 }}>
           {deathPopup.respawnCity
-            ? <>You will awaken in <span style={{ color: "#d4af37", fontWeight: 600 }}>{deathPopup.respawnCity}</span>, the last town you visited.</>
+            ? <>You will awaken in <span style={{ color: "#b8962a", fontWeight: 600 }}>{deathPopup.respawnCity}</span>, the last town you visited.</>
             : <>You will awaken at your starting location, far from civilization.</>
           }
         </div>
@@ -5790,10 +5966,10 @@ const heroUrl = "hero_sprite.png";
               // ✅ Parse **text** to bold
               const parts = msg.split(/(\*\*[^*]+\*\*)/);
               return (
-                <div key={i} style={{ fontSize: 14, padding: "4px 0", borderBottom: "1px solid #d4af3711" }}>
+                <div key={i} style={{ fontSize: 14, padding: "4px 0", borderBottom: "1px solid #b8962a11" }}>
                   {parts.map((part, idx) => {
                     if (part.startsWith("**") && part.endsWith("**")) {
-                      return <span key={idx} style={{ fontWeight: 700, color: "#d4af37" }}>{part.slice(2, -2)}</span>;  // ✅ Bold + Gold color
+                      return <span key={idx} style={{ fontWeight: 700, color: "#b8962a" }}>{part.slice(2, -2)}</span>;  // ✅ Bold + Gold color
                     }
                     return <span key={idx}>{part}</span>;
                   })}
@@ -5810,17 +5986,17 @@ const heroUrl = "hero_sprite.png";
               {/* Arena */}
               <div style={{
                 display: "flex", justifyContent: "space-around", alignItems: "center",
-                background: "radial-gradient(ellipse at center, #1a1a2e 0%, #0d0d1a 100%)",
+                background: "radial-gradient(ellipse at center, #0e0a14 0%, #070508 100%)",
                 borderRadius: 12, padding: "20px 10px", marginBottom: 12,
-                border: "1px solid #d4af3722", position: "relative", minHeight: 260,
+                border: "1px solid #b8962a22", position: "relative", minHeight: 260,
               }}>
                 {/* Player */}
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, flex: 1 }}>
                   <div style={{
                     width: 180, height: 180, borderRadius: 16,
-                    background: "radial-gradient(circle, #1a1a2e, #0a0a12)",
+                    background: "radial-gradient(circle, #0d0a12, #060408)",
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    boxShadow: playerHit ? "0 0 20px #4ade80aa" : playerDodge ? "0 0 20px #60a5faaa" : "0 0 8px #0008",
+                    boxShadow: playerHit ? "0 0 20px #3aaa60aa" : playerDodge ? "0 0 20px #4a7ab8aa" : "0 0 8px #0008",
                     transition: "box-shadow 0.3s", overflow: "hidden",
                   }}>
                     <HeroImage size={165} heroUrl={heroUrl} />
@@ -5870,8 +6046,8 @@ const heroUrl = "hero_sprite.png";
                           textAlign: "center",
                           color: playerStatus.type === "burn" ? "#ff6b35" :
                                  playerStatus.type === "bleed" ? "#c41e3a" :
-                                 playerStatus.type === "poison" ? "#4ade80" :
-                                 playerStatus.type === "slow" ? "#60a5fa" :
+                                 playerStatus.type === "poison" ? "#3aaa60" :
+                                 playerStatus.type === "slow" ? "#4a7ab8" :
                                  playerStatus.type === "stun" ? "#fbbf24" : "#fff"
                         }}>
                           {playerStatus.duration}
@@ -5914,22 +6090,22 @@ const heroUrl = "hero_sprite.png";
                 </div>
 
                 {/* VS */}
-                <div style={{ fontSize: 32, fontWeight: 900, color: "#d4af37", textShadow: "0 0 12px #d4af3766", padding: "0 8px" }}>VS</div>
+                <div style={{ fontSize: 32, fontWeight: 900, color: "#b8962a", textShadow: "0 0 12px #b8962a66", padding: "0 8px" }}>VS</div>
 
                 {/* Enemy with sprite */}
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, flex: 1 }}>
                   <div style={{
                     width: 180, height: 180, borderRadius: 16,
-                    background: "radial-gradient(circle, #1a1a2e, #0a0a12)",
+                    background: "radial-gradient(circle, #0d0a12, #060408)",
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    boxShadow: enemyHit ? `0 0 20px ${enemy.isBoss ? "#ff8000aa" : "#ef4444aa"}` : "0 0 8px #0008",
+                    boxShadow: enemyHit ? `0 0 20px ${enemy.isBoss ? "#ff8000aa" : "#c04848aa"}` : "0 0 8px #0008",
                     transition: "box-shadow 0.3s", overflow: "hidden",
                   }}>
                     <SpriteImage spriteKey={spriteKey} size={165} spriteSheetUrl={spriteSheetUrl} />
                   </div>
                   {/* ✅ NEW: Enemy Name + Status Badge */}
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <div style={{ fontWeight: 700, fontSize: 15, color: enemy.isBoss ? "#ff8000" : "#ef4444" }}>
+                    <div style={{ fontWeight: 700, fontSize: 15, color: enemy.isBoss ? "#ff8000" : "#c04848" }}>
                       {enemy.isBoss ? "👑 " : ""}{enemy.name}
                     </div>
                     {enemyStatus.type && enemyStatus.duration > 0 && (
@@ -5970,8 +6146,8 @@ const heroUrl = "hero_sprite.png";
                           textAlign: "center",
                           color: enemyStatus.type === "burn" ? "#ff6b35" :
                                  enemyStatus.type === "bleed" ? "#c41e3a" :
-                                 enemyStatus.type === "poison" ? "#4ade80" :
-                                 enemyStatus.type === "slow" ? "#60a5fa" :
+                                 enemyStatus.type === "poison" ? "#3aaa60" :
+                                 enemyStatus.type === "slow" ? "#4a7ab8" :
                                  enemyStatus.type === "stun" ? "#fbbf24" : "#fff"
                         }}>
                           {enemyStatus.duration}
@@ -6033,7 +6209,7 @@ const heroUrl = "hero_sprite.png";
               {/* Action buttons */}
               <div style={{ display: "flex", gap: 8, justifyContent: "center", marginBottom: 12, flexWrap: "wrap" }}>
                 <button onClick={attack} style={{ ...S.btn, ...S.btnDanger, flex: 1, minWidth: 80 }} disabled={enemyHp <= 0}>⚔️ Attack</button>
-                <button onClick={() => setCombatItemsOpen(prev => !prev)} style={{ ...S.btn, ...S.btnSuccess, flex: 1, minWidth: 80, ...(combatItemsOpen ? { borderColor: "#4ade80", background: "linear-gradient(180deg, #1a2a0e, #0f1a08)" } : {}) }} disabled={enemyHp <= 0}>🧪 Items</button>
+                <button onClick={() => setCombatItemsOpen(prev => !prev)} style={{ ...S.btn, ...S.btnSuccess, flex: 1, minWidth: 80, ...(combatItemsOpen ? { borderColor: "#3aaa60", background: "linear-gradient(180deg, #1a2a0e, #0f1a08)" } : {}) }} disabled={enemyHp <= 0}>🧪 Items</button>
                 <button onClick={() => setSkillsOpen(prev => !prev)} style={{ ...S.btn, flex: 1, minWidth: 80, ...(skillsOpen ? { borderColor: "#a0c4ff", background: "linear-gradient(180deg, #0e1a3a, #081028)" } : {}), borderColor: (learnedAbilities.spells.length > 0 || learnedAbilities.specials.length > 0) ? "#a0c4ff" : "#999", color: (learnedAbilities.spells.length > 0 || learnedAbilities.specials.length > 0) ? "#a0c4ff" : "#999" }} disabled={enemyHp <= 0 || (learnedAbilities.spells.length === 0 && learnedAbilities.specials.length === 0)}>✨ Skills</button>
                 <button onClick={flee} style={{ ...S.btn, flex: 1, minWidth: 80 }} disabled={enemyHp <= 0}>🏃 Flee</button>
               </div>
@@ -6103,7 +6279,7 @@ const heroUrl = "hero_sprite.png";
           <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
             <div style={{ ...S.panel, textAlign: "center" }}>
               <h2 style={{ ...S.gold, margin: "0 0 4px 0", fontSize: 26, display: "flex", alignItems: "center", gap: 8 }}><CastleSVG size={112} /> {currentCity.name}</h2>
-              <span style={S.badge(TIER_COLORS[currentCity.difficulty] || "#d4af37")}>{currentCity.difficulty}</span>
+              <span style={S.badge(TIER_COLORS[currentCity.difficulty] || "#b8962a")}>{currentCity.difficulty}</span>
             </div>
 
             {activeQuests.length > 0 && (
@@ -6140,7 +6316,7 @@ const heroUrl = "hero_sprite.png";
             <div style={{ padding: "0 12px", marginBottom: 8 }}>
               <button
                 onClick={() => { setFastTravelMode(true); setWorldMapOpen(true); }}
-                style={{ ...S.btn, width: "100%", display:"flex", alignItems:"center", justifyContent:"center", gap:8, borderColor: "#60a5fa", color: "#60a5fa" }}
+                style={{ ...S.btn, width: "100%", display:"flex", alignItems:"center", justifyContent:"center", gap:8, borderColor: "#4a7ab8", color: "#4a7ab8" }}
                 disabled={visitedCities.size <= 1}
               >
                 <CastleSVG size={28}/> Fast Travel
@@ -6178,10 +6354,10 @@ const heroUrl = "hero_sprite.png";
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <div style={{ background: "#ffffff06", borderRadius: 8, padding: 14, border: "1px solid #d4af3722" }}>
+              <div style={{ background: "#ffffff06", borderRadius: 8, padding: 14, border: "1px solid #b8962a22" }}>
                 <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 6, display:"flex", alignItems:"center", gap:6 }}><CampfireSVG size={28}/> Campfire</div>
                 <div style={{ fontSize: 14, opacity: 0.6, marginBottom: 4 }}>Rest on the floor for free</div>
-                <div style={{ fontSize: 14, color: "#4ade80", marginBottom: 8 }}>+1 HP/s • +1 Mana/s</div>
+                <div style={{ fontSize: 14, color: "#3aaa60", marginBottom: 8 }}>+1 HP/s • +1 Mana/s</div>
                 <button
                   onClick={() => { setResting(true); setRestType("free"); setScreen("resting"); }}
                   style={{ ...S.btn, width: "100%", ...(hp >= stats.maxHp ? S.btnDisabled : {}) }}
@@ -6189,11 +6365,11 @@ const heroUrl = "hero_sprite.png";
                 >Rest (Free)</button>
               </div>
 
-              <div style={{ background: "#d4af3708", borderRadius: 8, padding: 14, border: "1px solid #d4af3733" }}>
-                <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 6, color: "#d4af37", display:"flex", alignItems:"center", gap:6 }}><BedSVG size={28}/> Warm Bed</div>
+              <div style={{ background: "#b8962a08", borderRadius: 8, padding: 14, border: "1px solid #b8962a33" }}>
+                <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 6, color: "#b8962a", display:"flex", alignItems:"center", gap:6 }}><BedSVG size={28}/> Warm Bed</div>
                 <div style={{ fontSize: 14, opacity: 0.6, marginBottom: 4 }}>A comfortable room with meals</div>
-                <div style={{ fontSize: 14, color: "#4ade80", marginBottom: 2 }}>+{innHealPerTick} HP/s ({Math.round(innRate * 100)}% max HP)</div>
-                <div style={{ fontSize: 14, color: "#d4af37", marginBottom: 2 }}>{innCostPerTick}g per second</div>
+                <div style={{ fontSize: 14, color: "#3aaa60", marginBottom: 2 }}>+{innHealPerTick} HP/s ({Math.round(innRate * 100)}% max HP)</div>
+                <div style={{ fontSize: 14, color: "#b8962a", marginBottom: 2 }}>{innCostPerTick}g per second</div>
                 {hpMissing > 0 && <div style={{ fontSize: 13, opacity: 0.5, marginBottom: 6 }}>≈ {totalCostEstimate}g for full heal</div>}
                 <button
                   onClick={() => { if (gold >= innCostPerTick) { setResting(true); setRestType("paid"); setScreen("resting"); } }}
@@ -6253,7 +6429,7 @@ const heroUrl = "hero_sprite.png";
             {items.map((item, i) => {
               const owned = inventory.filter(inv => inv.name === item.name).length;
               return (
-              <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid #d4af3711" }}>
+              <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid #b8962a11" }}>
                 <div>
                   <div style={{ fontWeight: 600, fontSize: 21 }}>{item.name}{owned > 0 && <span style={{ fontSize: 15, opacity: 0.5, marginLeft: 6 }}>({owned} in bag)</span>}</div>
                   <div style={{ fontSize: 17, opacity: 0.6 }}>{item.effect === "repel" ? `No encounters for ${item.value} steps` : `${item.healPercent ? `Heals +${Math.round(item.healPercent * 100)}% HP` : `Heals ${item.value} HP`}`}</div>
@@ -6304,19 +6480,19 @@ const heroUrl = "hero_sprite.png";
             {visibleItems.map((item, i) => {
               const statEntries = item.bonusStats ? Object.entries(item.bonusStats) : [];
               return (
-              <div key={item.uid || i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid #d4af3711" }}>
+              <div key={item.uid || i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid #b8962a11" }}>
                 <div>
                   <div style={{ fontWeight: 600, fontSize: 19, color: item.rarityColor || "#ccc" }}>{item.name}</div>
                   <div style={{ fontSize: 15, opacity: 0.5 }}>
                     <span style={{ color: item.rarityColor, fontWeight: 600 }}>{item.rarity || "Normal"}</span>
                     {" • "}{item.slot.charAt(0).toUpperCase() + item.slot.slice(1)}
-                    {item.itemLevel && <><span>{" • "}</span><span style={{ color: "#d4af37" }}>Lvl {item.itemLevel}</span></>}
+                    {item.itemLevel && <><span>{" • "}</span><span style={{ color: "#b8962a" }}>Lvl {item.itemLevel}</span></>}
                   </div>
                   <div style={{ fontSize: 14, display: "flex", gap: 8, flexWrap: "wrap", marginTop: 2 }}>
-                    {item.bonusDamage > 0 && <span style={{ color: "#ef4444" }}>+{item.bonusDamage} DMG</span>}
-                    {item.bonusDefense > 0 && <span style={{ color: "#60a5fa" }}>+{item.bonusDefense} DEF</span>}
+                    {item.bonusDamage > 0 && <span style={{ color: "#c04848" }}>+{item.bonusDamage} DMG</span>}
+                    {item.bonusDefense > 0 && <span style={{ color: "#4a7ab8" }}>+{item.bonusDefense} DEF</span>}
                     {statEntries.map(([stat, val]) => (
-                      <span key={stat} style={{ color: "#d4af37" }}>+{val} {stat.slice(0,3).toUpperCase()}</span>
+                      <span key={stat} style={{ color: "#b8962a" }}>+{val} {stat.slice(0,3).toUpperCase()}</span>
                     ))}
                   </div>
                 </div>
@@ -6367,8 +6543,8 @@ const heroUrl = "hero_sprite.png";
             <h2 style={{ ...S.gold, margin: "0 0 12px 0", fontSize: 28, display:"flex", alignItems:"center", gap:10 }}><WeaponSVG size={64}/> Questgiver</h2>
 
             {turnInableQuests.length > 0 && (
-              <div style={{ marginBottom: 12, padding: 8, background: "#4ade8011", borderRadius: 6, border: "1px solid #4ade8033" }}>
-                <div style={{ fontSize: 21, fontWeight: 700, color: "#4ade80", marginBottom: 6 }}>Ready to Turn In</div>
+              <div style={{ marginBottom: 12, padding: 8, background: "#3aaa6011", borderRadius: 6, border: "1px solid #3aaa6033" }}>
+                <div style={{ fontSize: 21, fontWeight: 700, color: "#3aaa60", marginBottom: 6 }}>Ready to Turn In</div>
                 {turnInableQuests.map(q => (
                   <div key={q.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0" }}>
                     <div>
@@ -6390,7 +6566,7 @@ const heroUrl = "hero_sprite.png";
             )}
 
             {pendingQuests.length > 0 && (
-              <div style={{ marginBottom: 12, padding: 8, background: "#d4af3709", borderRadius: 6, border: "1px solid #d4af3722" }}>
+              <div style={{ marginBottom: 12, padding: 8, background: "#b8962a09", borderRadius: 6, border: "1px solid #b8962a22" }}>
                 <div style={{ fontSize: 14, opacity: 0.5, marginBottom: 6 }}>In Progress</div>
                 {pendingQuests.map(q => {
                   const progress = getQuestProgress(q);
@@ -6410,10 +6586,10 @@ const heroUrl = "hero_sprite.png";
               <div style={{ 
                 marginBottom: 12, 
                 padding: 12, 
-                background: "#ef444422",  // ✅ Red tint for emphasis
+                background: "#c0484822",  // ✅ Red tint for emphasis
                 borderRadius: 8, 
-                border: "2px solid #ef4444",  // ✅ Bold red border
-                boxShadow: "0 0 16px #ef444433"  // ✅ Glow effect
+                border: "2px solid #c04848",  // ✅ Bold red border
+                boxShadow: "0 0 16px #c0484833"  // ✅ Glow effect
               }}>
                 <div style={{ fontSize: 20, fontWeight: 800, color: "#ff6b6b", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
                   <CrownSVG size={20}/> MAIN QUESTS <CrownSVG size={20}/>  {/* ✅ Main Quest label */}
@@ -6426,8 +6602,8 @@ const heroUrl = "hero_sprite.png";
                       marginBottom: 8,
                       background: "#1a0a0a",  // ✅ Darker background
                       borderRadius: 6,
-                      border: "1px solid #ef4444",
-                      boxShadow: "inset 0 0 8px #ef444411"
+                      border: "1px solid #c04848",
+                      boxShadow: "inset 0 0 8px #c0484811"
                     }}>
                       <div style={{ fontWeight: 700, fontSize: 22, color: "#ff6b6b", marginBottom: 4 }}>
                         {kindIcon} {q.title}
@@ -6448,7 +6624,7 @@ const heroUrl = "hero_sprite.png";
                           ...S.btnSuccess, 
                           padding: "8px 16px", 
                           fontSize: 18,
-                          background: "linear-gradient(180deg, #ef4444, #dc2626)",  // ✅ Red gradient
+                          background: "linear-gradient(180deg, #c04848, #dc2626)",  // ✅ Red gradient
                           borderColor: "#ff6b6b",
                           color: "#fff",
                           fontWeight: 700
@@ -6465,11 +6641,11 @@ const heroUrl = "hero_sprite.png";
             {/* ✅ REGULAR QUESTS - Below main quests */}
             {availableQuests.filter(q => q.questKind !== "chunkBossHunt").length > 0 && (
               <div>
-                <div style={{ fontSize: 16, fontWeight: 600, color: "#d4af37", marginBottom: 8, marginTop: 8 }}>Other Quests</div>
+                <div style={{ fontSize: 16, fontWeight: 600, color: "#b8962a", marginBottom: 8, marginTop: 8 }}>Other Quests</div>
                 {availableQuests.filter(q => q.questKind !== "chunkBossHunt").map((q) => {
                   const kindIcon = q.questKind === "kill" ? <KillSVG size={18}/> : q.questKind === "deliver" ? <DeliverSVG size={18}/> : <GatherSVG size={18}/>;
                   return (
-                    <div key={q.id} style={{ padding: "10px 0", borderBottom: "1px solid #d4af3711" }}>
+                    <div key={q.id} style={{ padding: "10px 0", borderBottom: "1px solid #b8962a11" }}>
                       <div style={{ fontWeight: 600, fontSize: 21 }}>{kindIcon} {q.title}</div>
                       <div style={{ fontSize: 21, opacity: 0.7, marginBottom: 4 }}>{q.description}</div>
                       <div style={{ fontSize: 17, ...S.gold }}>Reward: {q.goldReward}g + {q.xpReward} XP</div>
@@ -6502,8 +6678,8 @@ const heroUrl = "hero_sprite.png";
             <h2 style={{ ...S.gold, margin: "0 0 12px 0", fontSize: 28, display:"flex", alignItems:"center", gap:10 }}><BulletinSVG size={64}/> Bulletin Board</h2>
 
             {turnInableQuests.length > 0 && (
-              <div style={{ marginBottom: 12, padding: 8, background: "#4ade8011", borderRadius: 6, border: "1px solid #4ade8033" }}>
-                <div style={{ fontSize: 21, fontWeight: 700, color: "#4ade80", marginBottom: 6 }}>Ready to Turn In</div>
+              <div style={{ marginBottom: 12, padding: 8, background: "#3aaa6011", borderRadius: 6, border: "1px solid #3aaa6033" }}>
+                <div style={{ fontSize: 21, fontWeight: 700, color: "#3aaa60", marginBottom: 6 }}>Ready to Turn In</div>
                 {turnInableQuests.map(q => (
                   <div key={q.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0" }}>
                     <div>
@@ -6525,7 +6701,7 @@ const heroUrl = "hero_sprite.png";
               
               const kindIcon = q.questKind === "kill" ? <KillSVG size={18}/> : q.questKind === "deliver" ? <DeliverSVG size={18}/> : <GatherSVG size={18}/>;
               return (
-                <div key={q.id} style={{ padding: "10px 0", borderBottom: "1px solid #d4af3711" }}>
+                <div key={q.id} style={{ padding: "10px 0", borderBottom: "1px solid #b8962a11" }}>
                   <div style={{ fontWeight: 600, fontSize: 21 }}>{kindIcon} {q.title}</div>
                   <div style={{ fontSize: 21, opacity: 0.7, marginBottom: 4 }}>{q.description}</div>
                   <div style={{ fontSize: 17, ...S.gold }}>Reward: {q.goldReward}g + {q.xpReward} XP</div>
@@ -6552,44 +6728,127 @@ const heroUrl = "hero_sprite.png";
       <div style={{ maxWidth: 1000, width: "100%" }}>
         <PlayerHeader {...{ playerName, level, xp, xpToLevel, gold, hp, mana, stats }} />
 
-        <div style={{ ...S.panel, display: "flex", gap: 8, flexWrap: "wrap", fontSize: 21, alignItems: "center" }}>
-          <span>📍 {pos.x}, {pos.y}</span>
+
+        <div style={{ ...S.panel, display: "flex", gap: 8, flexWrap: "wrap", fontSize: 15, alignItems: "center", padding: "8px 12px", marginBottom: 8, position: "relative" }}>
+          <span style={{ fontSize: 12, opacity: 0.4, fontFamily: "monospace" }}>📍 {pos.x},{pos.y}</span>
+          <span style={{ width: 1, height: 14, background: "#b8962a33" }} />
           <span style={S.badge(difficulty.color)}>{difficulty.name}</span>
-          <span>{BIOME_EMOJI[biome]} {biome}</span>
-          {activeQuests.length > 0 && <span style={{ ...S.gold }}>📜 {activeQuests.length} quest{activeQuests.length > 1 ? "s" : ""}</span>}
-          {repelSteps > 0 && <span style={{ color: "#60a5fa", fontWeight: 600 }}>🧪 Stealth: {repelSteps} steps</span>}
-          {cities[`${pos.x},${pos.y}`] && (
-            <button onClick={() => {
-              const city = cities[`${pos.x},${pos.y}`];
-              setCurrentCity(city);
-              setLastCity(city);
-              setScreen("city");
-              addLog(`🏰 Entered ${city.name}`);
-            }} style={{ ...S.btn, ...S.btnSuccess, padding: "6px 14px", fontSize: 17, display: "flex", alignItems: "center", gap: 6 }}><CastleSVG size={20} /> Enter {cities[`${pos.x},${pos.y}`].name}</button>
-          )}
-          <button onClick={() => setWorldMapOpen(true)} style={{ ...S.btn, padding: "6px 14px", fontSize: 17 }}>🗺️ Map</button>
+          <span style={{ fontSize: 15, fontWeight: 600, color: "#b8962a" }}>
+            {difficulty.isDynamic ? "Dynamic" : `Lv ${difficulty.levelRange[0]}–${difficulty.levelRange[1]}`}
+          </span>
+          <span style={{ width: 1, height: 14, background: "#b8962a33" }} />
+
+          {/* Biome with tooltip */}
+          {(() => {
+            const biomeEnemies = ENEMIES_BY_BIOME[biome] || [];
+            return (
+              <span style={{ position: "relative", display: "inline-flex", alignItems: "center" }}
+                onMouseEnter={e => e.currentTarget.querySelector(".tt").style.display = "block"}
+                onMouseLeave={e => e.currentTarget.querySelector(".tt").style.display = "none"}>
+                <span style={{ fontSize: 16, fontWeight: 600, cursor: "default" }}>{BIOME_EMOJI[biome]} {biome}</span>
+                <div className="tt" style={{ display: "none", position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 999, background: "rgba(5,4,8,0.97)", border: "1px solid #b8962a66", borderRadius: 8, padding: "8px 12px", minWidth: 160, boxShadow: "0 4px 16px #000c", whiteSpace: "nowrap" }}>
+                  <div style={{ fontSize: 11, opacity: 0.5, letterSpacing: 1, textTransform: "uppercase", marginBottom: 5 }}>Monsters</div>
+                  {biomeEnemies.map(e => <div key={e.name} style={{ fontSize: 13, padding: "2px 0", color: "#c8bfb0" }}>⚔️ {e.name}</div>)}
+                  {biomeEnemies.length === 0 && <div style={{ fontSize: 13, opacity: 0.5 }}>No encounters</div>}
+                </div>
+              </span>
+            );
+          })()}
+
+          <span style={{ width: 1, height: 14, background: "#b8962a33" }} />
+
+          {/* Caves with tooltip */}
+          {(() => {
+            const region = getChunkTier(pos.x, pos.y);
+            const regionCaves = region ? Object.entries(caves).filter(([k]) => {
+              const [cx, cy] = k.split(",").map(Number);
+              return cx >= region.xMin && cx <= region.xMax && cy >= region.yMin && cy <= region.yMax;
+            }) : [];
+            const cleared = regionCaves.filter(([k]) => defeatedBosses.has(k)).length;
+            const total = regionCaves.length;
+            if (total === 0) return null;
+            const color = cleared === total ? "#3aaa60" : "#c04848";
+            return (
+              <span style={{ position: "relative", display: "inline-flex", alignItems: "center" }}
+                onMouseEnter={e => e.currentTarget.querySelector(".tt").style.display = "block"}
+                onMouseLeave={e => e.currentTarget.querySelector(".tt").style.display = "none"}>
+                <span style={{ fontSize: 16, fontWeight: 600, color, background: `${color}18`, border: `1px solid ${color}44`, borderRadius: 6, padding: "2px 9px", display: "flex", alignItems: "center", gap: 5, cursor: "default" }}>
+                  <CaveSVG size={15} /> {cleared}/{total}
+                </span>
+                <div className="tt" style={{ display: "none", position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 999, background: "rgba(5,4,8,0.97)", border: "1px solid #7a1f1f55", borderRadius: 8, padding: "8px 12px", minWidth: 180, boxShadow: "0 4px 16px #000c", whiteSpace: "nowrap" }}>
+                  <div style={{ fontSize: 11, opacity: 0.5, letterSpacing: 1, textTransform: "uppercase", marginBottom: 5 }}>Caves cleared</div>
+                  {regionCaves.map(([k, c]) => {
+                    const done = defeatedBosses.has(k);
+                    return <div key={k} style={{ fontSize: 13, padding: "2px 0", color: done ? "#3aaa60" : "#c04848", display: "flex", alignItems: "center", gap: 6 }}>
+                      {done ? "✓" : "○"} {c.name || "Cave"} <span style={{ opacity: 0.5 }}>Lv.{c.itemLevel}</span>
+                    </div>;
+                  })}
+                </div>
+              </span>
+            );
+          })()}
+
+          {/* Quests with tooltip */}
+          {activeQuests.length > 0 && (() => {
+            return (
+              <span style={{ position: "relative", display: "inline-flex", alignItems: "center" }}
+                onMouseEnter={e => e.currentTarget.querySelector(".tt").style.display = "block"}
+                onMouseLeave={e => e.currentTarget.querySelector(".tt").style.display = "none"}>
+                <span style={{ ...S.gold, fontSize: 16, fontWeight: 600, background: "rgba(212,175,55,0.12)", border: "1px solid #8a6a2a55", borderRadius: 6, padding: "2px 9px", cursor: "default" }}>
+                  📜 {activeQuests.length}
+                </span>
+                <div className="tt" style={{ display: "none", position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 999, background: "rgba(5,4,8,0.97)", border: "1px solid #b8962a66", borderRadius: 8, padding: "8px 12px", minWidth: 200, maxWidth: 280, boxShadow: "0 4px 16px #000c" }}>
+                  <div style={{ fontSize: 11, opacity: 0.5, letterSpacing: 1, textTransform: "uppercase", marginBottom: 5 }}>Active Quests</div>
+                  {activeQuests.map(q => {
+                    const progress = getQuestProgress(q);
+                    const target = q.targetKills || q.targetItems || q.targetBosses || 1;
+                    const done = isQuestComplete(q);
+                    return <div key={q.id} style={{ fontSize: 13, padding: "3px 0", borderBottom: "1px solid #b8962a11", display: "flex", justifyContent: "space-between", gap: 10, color: done ? "#3aaa60" : "#e8d7c3" }}>
+                      <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 180 }}>{q.title}</span>
+                      <span style={{ opacity: 0.6, whiteSpace: "nowrap" }}>{progress}/{target}</span>
+                    </div>;
+                  })}
+                </div>
+              </span>
+            );
+          })()}
+
+          {repelSteps > 0 && <span style={{ color: "#4a7ab8", fontWeight: 600, fontSize: 13, background: "rgba(96,165,250,0.1)", border: "1px solid #4a7ab833", borderRadius: 5, padding: "1px 7px" }}>🧪 {repelSteps} steps</span>}
         </div>
 
         <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-          {/* Map */}
-          <div style={{ ...S.panel, padding: 4, display: "flex", justifyContent: "center", flexShrink: 0, marginBottom: 0 }}>
-            <div style={{ display: "grid", gridTemplateColumns: `repeat(${VIEW_SIZE}, ${TILE_PX}px)`, gap: 1, overflow: "visible" }}>
-              {renderMap()}
+          {/* Map + city button */}
+          <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ ...S.panel, padding: 4, display: "flex", justifyContent: "center", marginBottom: 0 }}>
+              <div style={{ display: "grid", gridTemplateColumns: `repeat(${VIEW_SIZE}, ${TILE_PX}px)`, gap: 0, overflow: "visible" }}>
+                {renderMap()}
+              </div>
             </div>
+            {cities[`${pos.x},${pos.y}`] && (
+              <button onClick={() => {
+                const city = cities[`${pos.x},${pos.y}`];
+                setCurrentCity(city);
+                setLastCity(city);
+                setScreen("city");
+                addLog(`🏰 Entered ${city.name}`);
+              }} style={{ ...S.btn, ...S.btnSuccess, width: "100%", padding: "10px 0", fontSize: 16, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: "0 0 18px #3aaa6066", borderColor: "#3aaa60" }}>
+                <CastleSVG size={20} /> Enter {cities[`${pos.x},${pos.y}`].name}
+              </button>
+            )}
           </div>
 
           {/* Event Log */}
-          <div style={{ ...S.panel, flex: 1, minWidth: 160, maxHeight: VIEW_SIZE * (TILE_PX + 1) + 8, overflowY: "auto", marginBottom: 0 }}>
-            <div style={{ fontSize: 17, opacity: 0.5, marginBottom: 6 }}>Event Log</div>
+          <div style={{ ...S.panel, flex: 1, minWidth: 160, maxHeight: VIEW_SIZE * (TILE_PX + 1) + 8, overflowY: "auto", marginBottom: 0, padding: "10px 12px" }}>
+            <div style={{ fontSize: 11, opacity: 0.35, letterSpacing: 2, textTransform: "uppercase", marginBottom: 8, borderBottom: "1px solid #b8962a22", paddingBottom: 6 }}>Event Log</div>
             {log.map((msg, i) => {
               // Parse **text** to bold, and 🏰 to CastleSVG
               const parts = msg.split(/(\*\*[^*]+\*\*|🏰)/);
               return (
-                <div key={i} style={{ fontSize: 21, padding: "5px 0", opacity: 0.8, borderBottom: "1px solid #d4af3708", display: "flex", alignItems: "center", flexWrap: "wrap", gap: 2 }}>
+                <div key={i} style={{ fontSize: 15, padding: "4px 0", opacity: i === 0 ? 1 : 0.65 - i * 0.02, borderBottom: "1px solid #b8962a08", display: "flex", alignItems: "center", flexWrap: "wrap", gap: 2, transition: "opacity 0.2s" }}>
                   {parts.map((part, idx) => {
                     if (part === "🏰") return <CastleSVG key={idx} size={18} />;
                     if (part.startsWith("**") && part.endsWith("**")) {
-                      return <span key={idx} style={{ fontWeight: 700, color: "#d4af37" }}>{part.slice(2, -2)}</span>;
+                      return <span key={idx} style={{ fontWeight: 700, color: "#b8962a" }}>{part.slice(2, -2)}</span>;
                     }
                     return <span key={idx}>{part}</span>;
                   })}
@@ -6605,11 +6864,11 @@ const heroUrl = "hero_sprite.png";
         }}>
           <div style={{ ...S.panel, maxWidth: 440, width: "90%", textAlign: "center" }}>
             <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}><CaveSVG size={64} /></div>
-            <h2 style={{ ...S.gold, margin: "0 0 8px 0", fontSize: 24 }}>A Dark Cave</h2>
+            <h2 style={{ ...S.gold, margin: "0 0 8px 0", fontSize: 24 }}>{caveConfirm.name || "A Dark Cave"}</h2>
             <div style={{ fontSize: 17, opacity: 0.7, marginBottom: 6 }}>
               You discover a cave entrance. From within, you sense a powerful presence...
             </div>
-            <div style={{ fontSize: 19, fontWeight: 700, color: "#ef4444", marginBottom: 4 }}>
+            <div style={{ fontSize: 19, fontWeight: 700, color: "#c04848", marginBottom: 4 }}>
               {caveConfirm.bossEmoji} {caveConfirm.bossName}
             </div>
             <div style={{ fontSize: 15, opacity: 0.5, marginBottom: 12 }}>
@@ -6665,24 +6924,30 @@ const heroUrl = "hero_sprite.png";
 
 function PlayerHeader({ playerName, level, xp, xpToLevel, gold, hp, mana, stats }) {
   return (
-    <div style={{ ...S.panel, marginBottom: 8 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-        <div>
-          <span style={{ fontWeight: 700, fontSize: 21 }}>{playerName}</span>
-          <span style={{ fontSize: 21, opacity: 0.6, marginLeft: 8 }}>Lv.{level}</span>
+    <div style={{ ...S.panel, marginBottom: 8, padding: "10px 14px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ background: "linear-gradient(135deg, #1a1a3e, #2a1a0e)", border: "1px solid #b8962a66", borderRadius: 8, padding: "3px 10px", display: "flex", alignItems: "baseline", gap: 6 }}>
+            <span style={{ fontWeight: 700, fontSize: 19, color: "#c8bfb0" }}>{playerName}</span>
+            <span style={{ fontSize: 13, color: "#b8962a", fontWeight: 600 }}>Lv.{level}</span>
+          </div>
         </div>
-        <div style={{ display: "flex", gap: 12, fontSize: 17 }}>
-          <span style={{...S.gold, display:"flex", alignItems:"center", gap:4}}><MerchantSVG size={16}/> {gold}</span>
-          <span style={{ opacity: 0.6 }}>⚔️ {stats.damage}</span>
-          <span style={{ opacity: 0.6 }}>🛡️ {stats.defense}</span>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span style={{ ...S.gold, display: "flex", alignItems: "center", gap: 4, fontSize: 15, background: "rgba(212,175,55,0.1)", border: "1px solid #b8962a33", borderRadius: 6, padding: "2px 8px" }}><MerchantSVG size={14}/>{gold}g</span>
+          <span style={{ fontSize: 13, opacity: 0.55, background: "rgba(255,255,255,0.05)", border: "1px solid #ffffff11", borderRadius: 6, padding: "2px 8px" }}>⚔️ {stats.damage}</span>
+          <span style={{ fontSize: 13, opacity: 0.55, background: "rgba(255,255,255,0.05)", border: "1px solid #ffffff11", borderRadius: 6, padding: "2px 8px" }}>🛡️ {stats.defense}</span>
         </div>
       </div>
-      <HealthBar current={hp} max={stats.maxHp} label="HP" />
-      <HealthBar current={mana} max={stats.maxMana} label="Mana" isMana />
-      <div style={{ height: 8, background: "#1a1a00", borderRadius: 4, overflow: "hidden", marginTop: 5, border: "1px solid #d4af3733" }}>
-        <div style={{ width: `${(xp / xpToLevel) * 100}%`, height: "100%", background: "#d4af37", transition: "width 0.3s", borderRadius: 4 }} />
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5, marginBottom: 6 }}>
+        <HealthBar current={hp} max={stats.maxHp} label="HP" />
+        <HealthBar current={mana} max={stats.maxMana} label="Mana" isMana />
       </div>
-      <div style={{ fontSize: 13, opacity: 0.4, textAlign: "right", marginTop: 2 }}>XP: {xp}/{xpToLevel}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <div style={{ flex: 1, height: 5, background: "#1a1a00", borderRadius: 3, overflow: "hidden", border: "1px solid #b8962a22" }}>
+          <div style={{ width: `${(xp / xpToLevel) * 100}%`, height: "100%", background: "linear-gradient(90deg, #b8960a, #b8962a)", transition: "width 0.3s", borderRadius: 3 }} />
+        </div>
+        <span style={{ fontSize: 11, opacity: 0.35, whiteSpace: "nowrap" }}>XP {xp}/{xpToLevel}</span>
+      </div>
     </div>
   );
 }
@@ -6808,7 +7073,7 @@ export default function RPGGame() {
                 {Array.from({ length: SAVE_SLOTS }).map((_, slotIndex) => {
                   const save = allSaves.find(s => s.slotIndex === slotIndex);
                   return (
-                    <div key={slotIndex} style={{ background: "#ffffff06", borderRadius: 8, padding: 14, border: `1px solid ${save ? "#d4af3722" : "#666622"}` }}>
+                    <div key={slotIndex} style={{ background: "#ffffff06", borderRadius: 8, padding: 14, border: `1px solid ${save ? "#b8962a22" : "#666622"}` }}>
                       <div style={{ fontSize: 16, fontWeight: 700, ...S.gold, marginBottom: 6 }}>
                         📁 Slot {slotIndex + 1} {save ? "" : "(empty)"}
                       </div>
