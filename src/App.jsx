@@ -1311,7 +1311,7 @@ function generateChunkCities(chunkX, chunkY, seed, existingCities) {
 // Boss is 6x stronger due to higher base stats
 
 const BOSS_ITEM_LEVEL_STATS = {
-  baseHp:   75,
+  baseHp:   110,
   baseAtk:   8,   // ✅ Changed: 18 → 8
   baseXp:   150,  // ✅ Changed: 300 → 150
   baseGold: 100,  // ✅ Changed: 80 → 100
@@ -4993,8 +4993,7 @@ const heroUrl = "hero_sprite.png";
                 <polygon points="85,5 85,22 100,13" fill="#8b1a1a"/>
               </svg>
             )}
-            {(isCave || isDefeatedCave) && !isPlayer && (
-              isCave ? (
+            {isCave && !isPlayer && (
                 <svg width={TILE_PX * 1.5625} height={TILE_PX * 1.5625} viewBox="0 0 100 100" fill="none" style={{overflow:"visible", position:"absolute", top:"50%", left:"50%", transform:"translate(-50%,-50%)"}}>
                   <ellipse cx="50" cy="72" rx="48" ry="28" fill="#100c18" stroke="#4a4a6a" strokeWidth="1.2"/>
                   <ellipse cx="50" cy="65" rx="46" ry="34" fill="#100c18" stroke="#4a4a6a" strokeWidth="1"/>
@@ -5010,21 +5009,6 @@ const heroUrl = "hero_sprite.png";
                   <line x1="10" y1="68" x2="20" y2="60" stroke="#2a2a4a" strokeWidth="0.8"/>
                   <line x1="76" y1="62" x2="88" y2="70" stroke="#2a2a4a" strokeWidth="0.8"/>
                 </svg>
-              ) : (
-                <svg width={TILE_PX * 1.25} height={TILE_PX * 1.25} viewBox="0 0 80 100" fill="none" style={{overflow:"visible"}}>
-                  <ellipse cx="40" cy="42" rx="28" ry="26" fill="#c8c0a0" stroke="#a09080" strokeWidth="1"/>
-                  <rect x="20" y="56" width="40" height="18" rx="3" fill="#c8c0a0" stroke="#a09080" strokeWidth="1"/>
-                  <rect x="23" y="67" width="6" height="9" rx="1" fill="#08060e"/>
-                  <rect x="32" y="67" width="6" height="9" rx="1" fill="#08060e"/>
-                  <rect x="41" y="67" width="6" height="9" rx="1" fill="#08060e"/>
-                  <rect x="50" y="67" width="6" height="9" rx="1" fill="#08060e"/>
-                  <ellipse cx="30" cy="42" rx="9" ry="10" fill="#08060e"/>
-                  <ellipse cx="50" cy="42" rx="9" ry="10" fill="#08060e"/>
-                  <path d="M36,56 L40,50 L44,56 Z" fill="#08060e"/>
-                  <line x1="20" y1="65" x2="60" y2="65" stroke="#a09080" strokeWidth="0.8"/>
-                  <path d="M40,17 L37,28 L42,36 L38,46" fill="none" stroke="#a09080" strokeWidth="1.2"/>
-                </svg>
-              )
             )}
             {isPlayer ? (
               <svg width={TILE_PX * 1.25} height={TILE_PX * 1.25} viewBox="0 0 90 110" fill="none" style={{overflow:"visible", position:"relative", zIndex: 2}}>
