@@ -1,3 +1,32 @@
+
+function getTournamentCombatLog(enemyName, dmg, isCrit, seed, isEnemyAttack = false) {
+  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+  const firstName = enemyName.split(" ")[0];
+  if (isEnemyAttack) {
+    if (isCrit) {
+      const parts = pick(["arm", "leg", "foot", "finger", "ear", "nose"]);
+      const verb = pick(["strike", "attack", "blow", "slash"]);
+      return `${firstName} cuts off your ${parts} with a critical ${verb}. ${dmg} dmg!`;
+    } else {
+      const verbs = pick(["hits", "strikes", "cuts open", "breaks"]);
+      const parts = pick(["arm", "leg", "face", "hands", "foot", "back"]);
+      const noun = pick(["attack", "blow", "slash"]);
+      return `${firstName} ${verbs} your ${parts} with a vicious ${noun}. ${dmg} dmg.`;
+    }
+  } else {
+    if (isCrit) {
+      const parts = pick(["arm", "leg", "foot", "finger", "ear", "nose"]);
+      const verb = pick(["strike", "attack", "blow", "slash"]);
+      return `You cut off ${firstName}'s ${parts} with a critical ${verb}. ${dmg} dmg!`;
+    } else {
+      const verbs = pick(["hit", "strike", "cut open", "break"]);
+      const parts = pick(["arm", "leg", "face", "hands", "foot", "back"]);
+      const noun = pick(["attack", "blow", "slash"]);
+      return `You ${verbs} ${firstName}'s ${parts} with a vicious ${noun}. ${dmg} dmg.`;
+    }
+  }
+}
+
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 
 // ============================================================
@@ -79,6 +108,105 @@ const CAPITAL_CITIES = [
 // Build a quick lookup: "x,y" -> capital
 const CAPITAL_CITY_MAP = {};
 for (const c of CAPITAL_CITIES) CAPITAL_CITY_MAP[`${c.x},${c.y}`] = { ...c, isCapital: true };
+
+// ============================================================
+// TOURNAMENT SYSTEM
+// ============================================================
+
+const TOURNAMENT_KNIGHT_NAMES = [
+  "Aldric","Beron","Caldur","Draven","Edwyn","Farok","Gareth","Halvorn","Idris","Jorath",
+  "Keldrin","Lorcan","Mordecai","Navar","Oswin","Percyn","Quillon","Rhydan","Solvarn","Thadric",
+  "Ulvyn","Varak","Wulfric","Xandrel","Yoran","Zethric","Brennan","Corvyn","Duskrel","Emroth"
+];
+const TOURNAMENT_SQUIRE_NAMES = [
+  "Alton","Bevan","Cody","Daren","Edric","Finn","Garron","Hadwin","Ivor","Jasper",
+  "Kelton","Loren","Macon","Niles","Osric","Pell","Quinn","Renly","Seryn","Tomas",
+  "Uther","Vann","Wren","Xever","Yosef","Zolan","Arwin","Brynn","Caius","Davin"
+];
+
+const TOURNAMENT_RARITIES = [
+  { name: "Normal",    color: "#aaaaaa", statMult: 0.80, label: "Squire"           },
+  { name: "Uncommon",  color: "#3aaa60", statMult: 0.95, label: "Uncommon Knight"  },
+  { name: "Rare",      color: "#4a7ab8", statMult: 1.10, label: "Rare Knight"      },
+  { name: "Epic",      color: "#a855f7", statMult: 1.30, label: "Epic Knight"      },
+  { name: "Legendary", color: "#ff8c00", statMult: 1.50, label: "Legendary Knight" },
+];
+
+function generateTournamentNPC(rarityIdx, playerStats, regionMaxLevel, seed) {
+  const rng = seededRandom(seed);
+  const rarity = TOURNAMENT_RARITIES[rarityIdx];
+  const mult = rarity.statMult;
+  const isSquire = rarityIdx === 0;
+  const namePool = isSquire ? TOURNAMENT_SQUIRE_NAMES : TOURNAMENT_KNIGHT_NAMES;
+  const name = namePool[Math.floor(rng() * namePool.length)];
+  return {
+    name,
+    rarityIdx,
+    rarity: rarity.name,
+    rarityColor: rarity.color,
+    label: rarity.label,
+    level: regionMaxLevel,
+    hp:    Math.max(10, Math.round(playerStats.maxHp   * mult)),
+    maxHp: Math.max(10, Math.round(playerStats.maxHp   * mult)),
+    atk:   Math.max(1,  Math.round((playerStats.damage  || 5) * mult)),
+    def:   Math.max(0,  Math.round((playerStats.defense || 2) * mult)),
+    xpRange:   [Math.round(20 * mult * regionMaxLevel * 0.5), Math.round(20 * mult * regionMaxLevel)],
+    goldRange: [Math.round(10 * mult * regionMaxLevel * 0.5), Math.round(10 * mult * regionMaxLevel)],
+    isNPC: true,
+  };
+}
+
+function buildTournamentBracket(playerStats, regionMaxLevel, capitalName, worldSeed) {
+  const rng = seededRandom(worldSeed + capitalName.length * 1337 + 55555);
+  const pick = arr => arr[Math.floor(rng() * arr.length)];
+
+  // Guaranteed slots
+  const guaranteed = [
+    ...Array(3).fill(0),  // 3 squires
+    ...Array(3).fill(1),  // 3 uncommon
+    ...Array(1).fill(2),  // 1 rare
+  ];
+
+  // Random 8
+  const randWeights = [
+    { r: 0, w: 35 }, { r: 1, w: 40 }, { r: 2, w: 15 }, { r: 3, w: 8 }, { r: 4, w: 2 }
+  ];
+  const random8 = [];
+  for (let i = 0; i < 8; i++) {
+    let roll = rng() * 100, cum = 0;
+    for (const { r, w } of randWeights) { cum += w; if (roll < cum) { random8.push(r); break; } }
+    if (random8.length < i + 1) random8.push(0);
+  }
+
+  const allRarities = [...guaranteed, ...random8];
+  const npcs = allRarities.map((r, i) =>
+    generateTournamentNPC(r, playerStats, regionMaxLevel, worldSeed + i * 7919 + capitalName.charCodeAt(0))
+  );
+
+  // Build bracket: 16 slots, player at random position
+  const playerSlot = Math.floor(rng() * 16);
+  const slots = [];
+  let npcIdx = 0;
+  for (let i = 0; i < 16; i++) {
+    if (i === playerSlot) slots.push({ isPlayer: true, name: "You", rarityIdx: -1 });
+    else slots.push(npcs[npcIdx++]);
+  }
+
+  // Simulate all NPC vs NPC matchups for all rounds
+  // rounds[r] = array of 2^(3-r) match results { winner, loser }
+  const bracket = { slots, rounds: [] };
+  return bracket;
+}
+
+function simulateNPCMatch(a, b, rng) {
+  const aRarity = a.isPlayer ? -1 : (a.rarityIdx ?? 0);
+  const bRarity = b.isPlayer ? -1 : (b.rarityIdx ?? 0);
+  if (aRarity > bRarity) return a;
+  if (bRarity > aRarity) return b;
+  return rng() < 0.5 ? a : b;
+}
+
+
 
 
 
@@ -1906,10 +2034,10 @@ if (typeof document !== "undefined" && !document.getElementById("hp-pulse-style"
   document.head.appendChild(st);
 }
 
-function HealthBar({ current, max, label, isMana, pulse }) {
+function HealthBar({ current, max, label, isMana, pulse, isEnemy }) {
   const pct = Math.max(0, Math.min(100, (current / max) * 100));
   const isLow = !isMana && pct <= 25;
-  const barColor = isMana ? "#4169E1" : pct > 50 ? "#1a8a40" : pct > 25 ? "#9a7a10" : "#c04848";
+  const barColor = isMana ? "#4169E1" : isEnemy ? "#c04848" : pct > 50 ? "#1a8a40" : pct > 25 ? "#9a7a10" : "#c04848";
   return (
     <div style={{ marginBottom: 5 }}>
       {label && <div style={{ fontSize: 17, marginBottom: 3, opacity: 0.7 }}>{label}</div>}
@@ -3180,6 +3308,8 @@ const heroUrl = "hero_sprite.png";
 
   const [quests, setQuests] = useState(isLoaded ? playerData.quests : []);
   const [completedQuestIds, setCompletedQuestIds] = useState(isLoaded ? (playerData.completedQuestIds instanceof Set ? playerData.completedQuestIds : new Set(playerData.completedQuestIds || [])) : new Set());
+  const [completedTournaments, setCompletedTournaments] = useState(isLoaded ? new Set(playerData.completedTournaments || []) : new Set());
+  const [tournament, setTournament] = useState(null); // active tournament state
   const [acceptedChunkBossQuests, setAcceptedChunkBossQuests] = useState(isLoaded ? playerData.acceptedChunkBossQuests || {} : {});
   const [log, setLog] = useState(isLoaded ? playerData.log || ["Welcome back to the Realm of Shadows!"] : ["Welcome to the Realm of Shadows!"]);
   const [screen, setScreen] = useState("world");
@@ -3224,13 +3354,14 @@ const heroUrl = "hero_sprite.png";
   }, [combatLog]);
   const bigMapCanvasRef = useRef(null);
   const mapAnimRef = useRef(null);
+  const tournamentDefeatRef = useRef(false);
 
   // Auto-save when returning to world screen or entering a city
   const doSave = useCallback(() => {
     const ok = saveGame({
       playerName, worldSeed, pos, hp, mana, xp, level, gold,
       attributes: attrs, statPoints, equipment, inventory,
-      quests, completedQuestIds, acceptedChunkBossQuests, log: log.slice(-30),
+      quests, completedQuestIds, acceptedChunkBossQuests, completedTournaments: [...completedTournaments], log: log.slice(-30),
       lastCity, cityQuestsCache, cityBulletinCache, boughtUniqueIds: [...boughtUniqueIds], defeatedBosses: [...defeatedBosses],
       visitedCities: [...visitedCities],
       maxHp: calcStats(attrs, equipment).maxHp,
@@ -3239,7 +3370,7 @@ const heroUrl = "hero_sprite.png";
     }, currentSlot);  // ✅ Save to current slot
     setSaveMsg(ok ? "Game saved!" : "Save failed!");
     setTimeout(() => setSaveMsg(null), 1500);
-  }, [playerName, worldSeed, pos, hp, mana, xp, level, gold, attrs, statPoints, equipment, inventory, quests, completedQuestIds, acceptedChunkBossQuests, log, lastCity, cityQuestsCache, cityBulletinCache, boughtUniqueIds, learnedAbilities, abilityChoicePopup, currentSlot]);
+  }, [playerName, worldSeed, pos, hp, mana, xp, level, gold, attrs, statPoints, equipment, inventory, quests, completedQuestIds, acceptedChunkBossQuests, completedTournaments, log, lastCity, cityQuestsCache, cityBulletinCache, boughtUniqueIds, learnedAbilities, abilityChoicePopup, currentSlot]);
 
   // Auto-save when entering world or city screen
   useEffect(() => {
@@ -3248,7 +3379,7 @@ const heroUrl = "hero_sprite.png";
         saveGame({
           playerName, worldSeed, pos, hp, mana, xp, level, gold,
           attributes: attrs, statPoints, equipment, inventory,
-          quests, completedQuestIds, acceptedChunkBossQuests, log: log.slice(-30),
+          quests, completedQuestIds, acceptedChunkBossQuests, completedTournaments: [...completedTournaments], log: log.slice(-30),
           lastCity, cityQuestsCache, cityBulletinCache, boughtUniqueIds: [...boughtUniqueIds], defeatedBosses: [...defeatedBosses],
           visitedCities: [...visitedCities],
           maxHp: calcStats(attrs, equipment).maxHp,
@@ -3594,7 +3725,7 @@ const heroUrl = "hero_sprite.png";
     if (!enemy) return;
     const earnedXp = enemy.isBoss ? enemy.xpReward : randInt(enemy.xpRange[0], enemy.xpRange[1]);
     const earnedGold = enemy.isBoss ? enemy.goldReward : randInt(enemy.goldRange[0], enemy.goldRange[1]);
-    const lootItems = enemy.isBoss ? [] : rollLoot(enemy, difficulty.itemLevel);
+    const lootItems = (enemy.isBoss || enemy.isTournamentFight) ? [] : rollLoot(enemy, difficulty.itemLevel);
 
     // Boss loot drop
     let bossLootItem = null;
@@ -3620,8 +3751,8 @@ const heroUrl = "hero_sprite.png";
       setInventory(prev => canAddItem(prev, bossLootItem) ? [...prev, bossLootItem] : prev);
     }
 
-    // Update kill quest progress
-    setQuests(prev => prev.map(q => {
+    // Update kill quest progress (skip for tournament fights)
+    if (!enemy.isTournamentFight) setQuests(prev => prev.map(q => {
       if (!q.accepted) return q;
       
       if (q.questKind === "kill" && q.targetEnemy === enemy.name && (q.killCount || 0) < q.targetCount) {
@@ -3664,15 +3795,43 @@ const heroUrl = "hero_sprite.png";
     // (Das ist jetzt in allen Enemy-Death Szenarien gemacht)
     
     setEnemyHp(0);
-    setTimeout(() => { 
+    setTimeout(() => {
+      if (enemy?.isTournamentFight) {
+        // Tournament victory
+        setTournament(prev => {
+          if (!prev) return prev;
+          const isFinal = prev.currentRound === 3;
+          const nextRound = prev.currentRound + 1;
+          // Generate final loot if this was the final
+          let finalLoot = null;
+          if (isFinal) {
+            const opp = prev.currentOpponent;
+            const chunk = getChunkTier(pos.x, pos.y);
+            const lvl = chunk?.levelRange?.[1] ?? level;
+            const rarityMap = [0, 1, 2, 3, 4];
+            const lootRarityIdx = Math.min(4, (opp?.rarityIdx ?? 0) + 1);
+            finalLoot = generateBossLoot([lvl, lvl], getBiome(pos.x, pos.y, worldSeed), Date.now(), false);
+          }
+          if (isFinal) {
+            // Mark tournament complete
+            setCompletedTournaments(s => new Set([...s, prev.capitalKey]));
+            if (finalLoot) setInventory(inv => canAddItem(inv, finalLoot) ? [...inv, finalLoot] : inv);
+            return { ...prev, phase: "done", finalLoot };
+          }
+          return { ...prev, currentRound: nextRound, phase: "between" };
+        });
+        setScreen("tournament");
+        setEnemy(null);
+        return;
+      }
       if (combatStartPos) {
-        setPos(combatStartPos);  // ✅ Zurück zur Position wo Kampf war
+        setPos(combatStartPos);
       }
       setScreen("world");
       setEnemy(null);
-      setCombatStartPos(null);  // ✅ Cleanup
+      setCombatStartPos(null);
     }, 1500);
-  }, [enemy, difficulty, rollLoot, addLog, combatStartPos]);
+  }, [enemy, difficulty, rollLoot, addLog, combatStartPos, pos, level, worldSeed]);
 
   const handlePlayerStatusCheck = useCallback(() => {
     if (playerStatus.type && playerStatus.duration > 0) {
@@ -3702,6 +3861,8 @@ const heroUrl = "hero_sprite.png";
           
           // Prüfe auf Tod — vollständiger Death-Flow
           if (newHp <= 0) {
+          if (enemy?.isTournamentFight) { if (!tournamentDefeatRef.current) handleTournamentDefeat(); return prev; }
+            if (enemy?.isTournamentFight) { if (!tournamentDefeatRef.current) handleTournamentDefeat(); return prev; }
             const goldLost = Math.floor(gold * 0.8);
             const itemsLost = inventory.length;
             setCombatLog(cl => [
@@ -3813,6 +3974,7 @@ const heroUrl = "hero_sprite.png";
         
         // Prüfe auf Tod NACH HP-Berechnung
         if (newHp <= 0) {
+          if (enemy?.isTournamentFight) { if (!tournamentDefeatRef.current) handleTournamentDefeat(); return prev; }
           setCombatLog(cl => [...cl, `💀 ${enemy.name} died from ${enemyStatus.type}!`]);
           
           // ✅ FIX 1 & 2: Sofortiger Status-Cleanup (synchron!)
@@ -4077,7 +4239,23 @@ const heroUrl = "hero_sprite.png";
       setPlayerBuffs({ active: [] });
       setEnemyBuffs({ active: [] });
       
-      setTimeout(() => { setScreen("world"); setEnemy(null); }, 1500);
+      setTimeout(() => {
+        if (enemy?.isTournamentFight) {
+          setTournament(prev => {
+            if (!prev) return prev;
+            const isFinal = prev.currentRound === 3;
+            if (isFinal) {
+              setCompletedTournaments(s => new Set([...s, prev.capitalKey]));
+              return { ...prev, phase: "done", finalLoot: null };
+            }
+            return { ...prev, currentRound: prev.currentRound + 1, phase: "between" };
+          });
+          setScreen("tournament");
+          setEnemy(null);
+          return;
+        }
+        setScreen("world"); setEnemy(null);
+      }, 1500);
       return;
     }
 
@@ -4147,16 +4325,17 @@ const heroUrl = "hero_sprite.png";
       setHp(prev => {
         const newHp = prev - enemyDmg;
         if (newHp <= 0) {
+          if (enemy?.isTournamentFight) { if (!tournamentDefeatRef.current) handleTournamentDefeat(); return prev; }
           // ✅ NEW: Entferne Status/Buffs beim Defeat
           setPlayerStatus({ type: null, duration: 0, damagePerTurn: 0 });
           setEnemyStatus({ type: null, duration: 0, damagePerTurn: 0 });
           setPlayerBuffs({ active: [] });
           setEnemyBuffs({ active: [] });
           
-          setCombatLog(cl => [...cl, `${enemy.name} deals ${enemyDmg} damage!`, `💀 You have been defeated!`]);
+          setCombatLog(cl => [...cl, (enemy.isTournamentFight ? getTournamentCombatLog(enemy.name, enemyDmg, false, Date.now() + 1, true) : enemy.isTournamentFight ? getTournamentCombatLog(enemy.name, enemyDmg, false, Date.now() + 1, true) : `${enemy.name} deals ${enemyDmg} damage!`), `💀 You have been defeated!`]);
           return stats.maxHp;
         }
-        setCombatLog(cl => [...cl, `${enemy.name} deals ${enemyDmg} damage!`]);
+        setCombatLog(cl => [...cl, enemy.isTournamentFight ? getTournamentCombatLog(enemy.name, enemyDmg, false, Date.now() + 1, true) : `${enemy.name} deals ${enemyDmg} damage!`]);
         return newHp;
       });
     }, 400);
@@ -4239,7 +4418,23 @@ const heroUrl = "hero_sprite.png";
       setPlayerBuffs({ active: [] });
       setEnemyBuffs({ active: [] });
       
-      setTimeout(() => { setScreen("world"); setEnemy(null); }, 1500);
+      setTimeout(() => {
+        if (enemy?.isTournamentFight) {
+          setTournament(prev => {
+            if (!prev) return prev;
+            const isFinal = prev.currentRound === 3;
+            if (isFinal) {
+              setCompletedTournaments(s => new Set([...s, prev.capitalKey]));
+              return { ...prev, phase: "done", finalLoot: null };
+            }
+            return { ...prev, currentRound: prev.currentRound + 1, phase: "between" };
+          });
+          setScreen("tournament");
+          setEnemy(null);
+          return;
+        }
+        setScreen("world"); setEnemy(null);
+      }, 1500);
       return;
     }
 
@@ -4326,10 +4521,11 @@ const heroUrl = "hero_sprite.png";
       setHp(prev => {
         const newHp = prev - enemyDmg;
         if (newHp <= 0) {
-          setCombatLog(cl => [...cl, `${enemy.name} deals ${enemyDmg} damage!`, `💀 You have been defeated!`]);
+          if (enemy?.isTournamentFight) { if (!tournamentDefeatRef.current) handleTournamentDefeat(); return prev; }
+          setCombatLog(cl => [...cl, (enemy.isTournamentFight ? getTournamentCombatLog(enemy.name, enemyDmg, false, Date.now() + 1, true) : enemy.isTournamentFight ? getTournamentCombatLog(enemy.name, enemyDmg, false, Date.now() + 1, true) : `${enemy.name} deals ${enemyDmg} damage!`), `💀 You have been defeated!`]);
           return stats.maxHp;
         }
-        setCombatLog(cl => [...cl, `${enemy.name} deals ${enemyDmg} damage!`]);
+        setCombatLog(cl => [...cl, enemy.isTournamentFight ? getTournamentCombatLog(enemy.name, enemyDmg, false, Date.now() + 1, true) : `${enemy.name} deals ${enemyDmg} damage!`]);
         return newHp;
       });
     }, 400);
@@ -4366,6 +4562,8 @@ const heroUrl = "hero_sprite.png";
           const newHp = Math.max(0, prev - enemyStatusDmg);
           console.log(`   → Enemy HP: ${prev} - ${enemyStatusDmg} = ${newHp}`);
           if (newHp <= 0) {
+          if (enemy?.isTournamentFight) { if (!tournamentDefeatRef.current) handleTournamentDefeat(); return prev; }
+            if (enemy?.isTournamentFight) { if (!tournamentDefeatRef.current) handleTournamentDefeat(); return prev; }
             logs.push(`💀 ${enemy.name} died from ${enemyStatus.type}!`);
             endCombat();
           }
@@ -4481,10 +4679,12 @@ const heroUrl = "hero_sprite.png";
     }
     
     const newEnemyHp = enemyHp - playerDmg;
-    const newCombatLog = [...combatLog, isCrit
-      ? `💥 CRITICAL HIT! You deal ${playerDmg} damage to ${enemy.name}!`
-      : `You deal ${playerDmg} damage to ${enemy.name}!`
-    ];
+    const combatMsg = enemy.isTournamentFight
+      ? getTournamentCombatLog(enemy.name, playerDmg, isCrit, Date.now())
+      : isCrit
+        ? `💥 CRITICAL HIT! You deal ${playerDmg} damage to ${enemy.name}!`
+        : `You deal ${playerDmg} damage to ${enemy.name}!`;
+    const newCombatLog = [...combatLog, combatMsg];
 
     // ✅ VISUAL: Floating Damage Text IM ROTEN KREIS (Enemy, oben rechts)
     const enemyX = 450;  // Roten Kreis Mitte X
@@ -4556,7 +4756,23 @@ const heroUrl = "hero_sprite.png";
       setPlayerBuffs({ active: [] });
       setEnemyBuffs({ active: [] });
       
-      setTimeout(() => { setScreen("world"); setEnemy(null); }, 1500);
+      setTimeout(() => {
+        if (enemy?.isTournamentFight) {
+          setTournament(prev => {
+            if (!prev) return prev;
+            const isFinal = prev.currentRound === 3;
+            if (isFinal) {
+              setCompletedTournaments(s => new Set([...s, prev.capitalKey]));
+              return { ...prev, phase: "done", finalLoot: null };
+            }
+            return { ...prev, currentRound: prev.currentRound + 1, phase: "between" };
+          });
+          setScreen("tournament");
+          setEnemy(null);
+          return;
+        }
+        setScreen("world"); setEnemy(null);
+      }, 1500);
       return;
     }
 
@@ -4611,9 +4827,14 @@ const heroUrl = "hero_sprite.png";
     }
     
     const newHp = hp - enemyDmg;
-    newCombatLog.push(`${enemy.name} deals ${enemyDmg} damage to you!`);
+    newCombatLog.push(enemy.isTournamentFight ? getTournamentCombatLog(enemy.name, enemyDmg, false, Date.now() + 1, true) : `${enemy.name} deals ${enemyDmg} damage to you!`);
 
     if (newHp <= 0) {
+      if (enemy?.isTournamentFight) {
+        setCombatLog(newCombatLog);
+        handleTournamentDefeat();
+        return;
+      }
       const goldLost = Math.floor(gold * 0.8);
       const itemsLost = inventory.length;
       newCombatLog.push("💀 You have been defeated!");
@@ -4663,6 +4884,19 @@ const heroUrl = "hero_sprite.png";
     setCombatLog(newCombatLog);
   }, [enemy, enemyHp, stats, hp, combatLog, difficulty, rollLoot, addLog, addFloatingDamage, lastCity, startX, startY, gold, inventory, handlePlayerStatusCheck, handleEnemyStatusCheck, enemyStatus, playerStatus, playerBuffs, handlePlayerBuffDecrement, handleEnemyBuffDecrement]);
 
+  const handleTournamentDefeat = useCallback(() => {
+    if (tournamentDefeatRef.current) return;
+    tournamentDefeatRef.current = true;
+    setTournament(prev => prev ? { ...prev, phase: "lost" } : prev);
+    setPlayerStatus({ type: null, duration: 0, damagePerTurn: 0 });
+    setEnemyStatus({ type: null, duration: 0, damagePerTurn: 0 });
+    setPlayerBuffs({ active: [] });
+    setEnemyBuffs({ active: [] });
+    setEnemy(null);
+    setScreen("tournament");
+    setTimeout(() => { tournamentDefeatRef.current = false; }, 500);
+  }, []);
+
   const flee = useCallback(() => {
     // ✅ NEW: Buff Decrement am Anfang der Aktion
     handlePlayerBuffDecrement();
@@ -4675,6 +4909,12 @@ const heroUrl = "hero_sprite.png";
     // ✅ NEW: 100% Flucht-Erfolg bei vollen HP, sonst 50%
     const fleeChance = hp === stats.maxHp ? 1.0 : 0.5;
     
+    if (enemy?.isTournamentFight) {
+      addLog("🏃 You forfeited the tournament match!");
+      handleTournamentDefeat();
+      return;
+    }
+
     if (Math.random() < fleeChance) {
       addLog(hp === stats.maxHp ? "🏃 You fled from battle with ease! (Full HP)" : "🏃 You fled from battle!");
       
@@ -4700,7 +4940,7 @@ const heroUrl = "hero_sprite.png";
         setCombatLog(prev => [...prev, `Failed to flee! ${enemy.name} hits you for ${enemyDmg}!`]);
       }
     }
-  }, [enemy, stats, addLog, enemyStatus, playerStatus, handlePlayerStatusCheck, handlePlayerBuffDecrement, hp]);
+  }, [enemy, stats, addLog, enemyStatus, playerStatus, handlePlayerStatusCheck, handlePlayerBuffDecrement, hp, handleTournamentDefeat]);
 
 
   const useItemInCombat = useCallback((item, idx) => {
@@ -4747,6 +4987,7 @@ const heroUrl = "hero_sprite.png";
       setHp(prev => {
         const newHp = prev - enemyDmg;
         if (newHp <= 0) {
+          if (enemy?.isTournamentFight) { if (!tournamentDefeatRef.current) handleTournamentDefeat(); return prev; }
           // ✅ NEW: Entferne Status/Buffs beim Defeat
           setPlayerStatus({ type: null, duration: 0, damagePerTurn: 0 });
           setEnemyStatus({ type: null, duration: 0, damagePerTurn: 0 });
@@ -4755,7 +4996,7 @@ const heroUrl = "hero_sprite.png";
           
           const goldLost = Math.floor(gold * 0.8);
           const itemsLost = inventory.length - 1; // -1 because we just used one
-          setCombatLog(cl => [...cl, `${enemy.name} deals ${enemyDmg} damage!`, `💀 You have been defeated! Lost ${goldLost}g and ${itemsLost} items!`]);
+          setCombatLog(cl => [...cl, enemy.isTournamentFight ? getTournamentCombatLog(enemy.name, enemyDmg, false, Date.now() + 1, true) : (enemy.isTournamentFight ? getTournamentCombatLog(enemy.name, enemyDmg, false, Date.now() + 1, true) : `${enemy.name} deals ${enemyDmg} damage!`), `💀 You have been defeated! Lost ${goldLost}g and ${itemsLost} items!`]);
           addLog(`💀 Defeated by ${enemy.name}! Lost ${goldLost}g and ${itemsLost} items.`);
           setGold(g => g - Math.floor(g * 0.8));
           setInventory([]);
@@ -4788,7 +5029,7 @@ const heroUrl = "hero_sprite.png";
           });
           return stats.maxHp;
         }
-        setCombatLog(cl => [...cl, `${enemy.name} deals ${enemyDmg} damage to you!`]);
+        setCombatLog(cl => [...cl, enemy.isTournamentFight ? getTournamentCombatLog(enemy.name, enemyDmg, false, Date.now() + 1, true) : `${enemy.name} deals ${enemyDmg} damage to you!`]);
         return newHp;
       });
     }, 300);
@@ -6511,10 +6752,60 @@ const heroUrl = "hero_sprite.png";
               <button onClick={() => setScreen("blacksmith")} style={{ ...S.btn, display:"flex", alignItems:"center", justifyContent:"center", gap:6, ...(isCapitalCity ? { borderColor: "#b8962a88", color: "#b8962a" } : {}) }}><BlacksmithSVG size={36}/> {isCapitalCity ? "Master Blacksmith" : "Blacksmith"}</button>
               <button onClick={() => setScreen("inn")} style={{ ...S.btn, display:"flex", alignItems:"center", justifyContent:"center", gap:6, ...(isCapitalCity ? { borderColor: "#b8962a88", color: "#b8962a" } : {}) }}><InnSVG size={36}/> {isCapitalCity ? "Royal Lodge" : "Inn"}</button>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 20, padding: "0 12px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: isCapitalCity ? 8 : 20, padding: "0 12px" }}>
               <button onClick={() => setScreen("questgiver")} style={{ ...S.btn, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}><WeaponSVG size={36}/> Questgiver</button>
               <button onClick={() => setScreen("bulletin")} style={{ ...S.btn, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}><BulletinSVG size={36}/> Bulletin Board</button>
             </div>
+            {isCapitalCity && (() => {
+              const tKey = `${currentCity.x},${currentCity.y}`;
+              const done = completedTournaments.has(tKey);
+              const chunk = getChunkTier(currentCity.x, currentCity.y);
+              const regionMax = chunk?.levelRange?.[1] ?? level;
+              return (
+                <div style={{ padding: "0 12px", marginBottom: 20 }}>
+                  <button
+                    onClick={() => {
+                      if (done) return;
+                      const bracket = buildTournamentBracket(stats, regionMax, currentCity.name, worldSeed);
+                      // Pre-simulate all NPC matches
+                      const rng = seededRandom(worldSeed + currentCity.name.length * 999);
+                      // rounds[0] = round of 16 pairs, etc.
+                      let survivors = [...bracket.slots];
+                      const roundResults = [];
+                      for (let round = 0; round < 4; round++) {
+                        const matches = [];
+                        const nextSurvivors = [];
+                        for (let i = 0; i < survivors.length; i += 2) {
+                          const a = survivors[i], b = survivors[i+1];
+                          const winner = (a.isPlayer || b.isPlayer) ? null : simulateNPCMatch(a, b, rng);
+                          matches.push({ a, b, winner });
+                          nextSurvivors.push(winner || (a.isPlayer ? a : b));
+                        }
+                        roundResults.push(matches);
+                        survivors = nextSurvivors;
+                      }
+                      setTournament({
+                        capitalKey: tKey,
+                        capitalName: currentCity.name,
+                        bracket: bracket.slots,
+                        roundResults,
+                        currentRound: 0,
+                        currentMatchIdx: null,
+                        phase: "preview", // preview | fighting | between | done | lost
+                        playerBracketPos: bracket.slots.findIndex(s => s.isPlayer),
+                      });
+                      setScreen("tournament");
+                    }}
+                    disabled={done}
+                    style={{ ...S.btn, width: "100%", display:"flex", alignItems:"center", justifyContent:"center", gap:8, fontSize: 17, padding: 12,
+                      ...(done ? { ...S.btnDisabled, opacity: 0.5 } : { borderColor: "#ff8c00", color: "#ff8c00", background: "linear-gradient(180deg, #1a0e00, #100800)" })
+                    }}
+                  >
+                    ⚔️ {done ? `${currentCity.name} Tournament (Completed)` : `${currentCity.name} Tournament`}
+                  </button>
+                </div>
+              );
+            })()}
 
             {/* Fast Travel */}
             <div style={{ padding: "0 12px", marginBottom: 8 }}>
@@ -6955,6 +7246,305 @@ const heroUrl = "hero_sprite.png";
     );
   }
 
+
+  // ============================================================
+  // TOURNAMENT SCREENS
+  // ============================================================
+  if (screen === "tournament" && tournament) {
+    const ROUND_NAMES = ["Round 1", "Round 2", "Round 3", "Final"];
+    const tRarity = TOURNAMENT_RARITIES;
+
+    // Helper: get player's match in current round
+    const getPlayerMatch = () => {
+      if (!tournament) return null;
+      const roundMatches = tournament.roundResults[tournament.currentRound];
+      if (!roundMatches) return null;
+      return roundMatches.find(m => m.a.isPlayer || m.b.isPlayer) || null;
+    };
+
+    // Bracket display component
+    const renderBracket = () => {
+      const roundNames = ["Round 1", "Round 2", "Round 3", "Final"];
+      const renderParticipant = (p, isWinner, isPast) => {
+        const color = p.isPlayer ? "#ff8c00" : (tRarity[p.rarityIdx]?.color || "#aaa");
+        const prefix = p.isPlayer ? "" : p.rarityIdx === 0 ? "Squire " : "Knight ";
+        return (
+          <div style={{
+            color, fontSize: 11, fontWeight: p.isPlayer ? 700 : 400,
+            opacity: (isPast && !isWinner) ? 0.3 : 1,
+            padding: "2px 4px",
+            background: isWinner && isPast ? color + "22" : "transparent",
+            borderRadius: 3,
+            textDecoration: (isPast && !isWinner) ? "line-through" : "none",
+            textAlign: "center",
+            overflow: "hidden", textOverflow: "ellipsis",
+          }}>
+            {p.isPlayer ? "⚔ You" : `${prefix}${p.name}`}
+            {isWinner && isPast ? " ✓" : ""}
+          </div>
+        );
+      };
+
+      return (
+        <div style={{ overflowX: "auto", marginBottom: 12 }}>
+          <div style={{ display: "flex", gap: 6, minWidth: 500 }}>
+            {tournament.roundResults.map((matches, ri) => {
+              if (ri > tournament.currentRound) return null;
+              const isPast = ri < tournament.currentRound;
+              const isCurrent = ri === tournament.currentRound;
+              return (
+                <div key={ri} style={{ flex: 1, display: "flex", flexDirection: "column", gap: 3 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: isCurrent ? "#ff8c00" : "#b8962a", textAlign: "center", marginBottom: 4, opacity: isCurrent ? 1 : 0.6, textTransform: "uppercase", letterSpacing: 1 }}>
+                    {roundNames[ri]}{isCurrent ? " ◀" : ""}
+                  </div>
+                  {matches.map((m, mi) => {
+                    const isPlayerMatch = m.a.isPlayer || m.b.isPlayer;
+                    const playerWon = isPlayerMatch && isPast;
+                    const playerLost = isPlayerMatch && tournament.phase === "lost" && isCurrent;
+                    const aWon = isPast ? (m.winner ? m.winner.name === m.a.name : m.a.isPlayer) : false;
+                    const bWon = isPast ? (m.winner ? m.winner.name === m.b.name : m.b.isPlayer) : false;
+
+                    let borderColor = "#ffffff18";
+                    if (isPlayerMatch) {
+                      borderColor = playerLost ? "#c04848" : playerWon ? "#3aaa60" : isCurrent ? "#ff8c00" : "#b8962a44";
+                    }
+
+                    return (
+                      <div key={mi} style={{
+                        background: isPlayerMatch ? (isCurrent ? "#ff8c0011" : "#b8962a08") : "#ffffff04",
+                        border: `1px solid ${borderColor}`,
+                        borderRadius: 5, padding: "4px 6px",
+                        boxShadow: isPlayerMatch && isCurrent ? "0 0 8px #ff8c0033" : "none",
+                      }}>
+                        {renderParticipant(m.a, aWon, isPast)}
+                        <div style={{ fontSize: 9, opacity: 0.35, textAlign: "center", margin: "1px 0" }}>vs</div>
+                        {renderParticipant(m.b, bWon, isPast)}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    };
+
+    // PHASE: preview (before first fight)
+    if (tournament.phase === "preview" || tournament.phase === "between") {
+      const playerMatch = getPlayerMatch();
+      const opponent = playerMatch ? (playerMatch.a.isPlayer ? playerMatch.b : playerMatch.a) : null;
+      const isFinal = tournament.currentRound === 3;
+      return (
+        <div style={S.app}>
+          {levelUpPopup}
+          <div style={{ maxWidth: 580, width: "100%", display: "flex", flexDirection: "column", gap: 0 }}>
+            <PlayerHeader {...{ playerName, level, xp, xpToLevel, gold, hp, mana, stats }} />
+            <div style={{ ...S.panel, border: "1px solid #ff8c0044", boxShadow: "0 0 24px #ff8c0022" }}>
+              <div style={{ textAlign: "center", marginBottom: 12 }}>
+                <div style={{ fontSize: 13, letterSpacing: 3, color: "#ff8c00", opacity: 0.8, textTransform: "uppercase" }}>⚔️ Tournament</div>
+                <div style={{ fontSize: 24, fontWeight: 800, ...S.gold, marginTop: 2 }}>{tournament.capitalName} Tournament</div>
+                <div style={{ fontSize: 14, color: "#ff8c00", marginTop: 4, fontWeight: 600 }}>{ROUND_NAMES[tournament.currentRound]}</div>
+              </div>
+
+              {renderBracket()}
+
+              {opponent && (
+                <div style={{ background: "#ffffff08", borderRadius: 8, padding: 12, border: `1px solid ${tRarity[opponent.rarityIdx]?.color || "#aaa"}44`, marginBottom: 12 }}>
+                  <div style={{ fontSize: 13, opacity: 0.6, marginBottom: 4 }}>Your next opponent:</div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: tRarity[opponent.rarityIdx]?.color || "#aaa" }}>{opponent.name}</div>
+                  <div style={{ fontSize: 13, color: tRarity[opponent.rarityIdx]?.color || "#aaa", marginBottom: 6 }}>{opponent.label}</div>
+                  <div style={{ fontSize: 13, opacity: 0.7, display: "flex", gap: 12 }}>
+                    <span>❤️ {opponent.hp} HP</span>
+                    <span>⚔️ {opponent.atk} ATK</span>
+                    <span>🛡️ {opponent.def} DEF</span>
+                    <span>Lv.{opponent.level}</span>
+                  </div>
+                </div>
+              )}
+
+              {tournament.phase === "between" && (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 13, opacity: 0.5, marginBottom: 6 }}>Use potions before next fight:</div>
+                  {inventory.filter(i => i.type === "consumable" && i.effect === "heal").length === 0
+                    ? <div style={{ fontSize: 13, opacity: 0.4 }}>No potions in inventory.</div>
+                    : inventory.filter(i => i.type === "consumable" && i.effect === "heal").map((item, idx) => (
+                      <div key={idx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", borderBottom: "1px solid #ffffff11" }}>
+                        <span style={{ fontSize: 14 }}>{item.name} <span style={{ opacity: 0.5 }}>{item.healPercent ? `+${Math.round(item.healPercent*100)}% HP` : `+${item.value} HP`}</span></span>
+                        <button onClick={() => {
+                          const healAmt = item.healPercent ? Math.ceil(stats.maxHp * item.healPercent) : item.value;
+                          setHp(prev => Math.min(prev + healAmt, stats.maxHp));
+                          setInventory(prev => { const i2 = [...prev]; i2.splice(prev.indexOf(item), 1); return i2; });
+                          addLog(`Used ${item.name} (+${healAmt} HP)`);
+                        }} style={{ ...S.btn, ...S.btnSuccess, padding: "3px 10px", fontSize: 13 }}>Use</button>
+                      </div>
+                    ))
+                  }
+                </div>
+              )}
+
+              <button onClick={() => {
+                const playerMatch = getPlayerMatch();
+                const opp = playerMatch ? (playerMatch.a.isPlayer ? playerMatch.b : playerMatch.a) : null;
+                if (!opp) return;
+                setTournament(prev => ({ ...prev, phase: "fighting", currentOpponent: opp }));
+                // Set up combat via enemy state
+                setEnemy({
+                  ...opp,
+                  isTournamentFight: true,
+                  xpRange: opp.xpRange,
+                  goldRange: opp.goldRange,
+                  loot: [],
+                });
+                setEnemyHp(opp.hp);
+                setCombatLog([]);
+                setScreen("tournament_combat");
+              }} style={{ ...S.btn, ...S.btnSuccess, width: "100%", fontSize: 17, padding: 12, borderColor: "#ff8c00", color: "#ff8c00" }}>
+                ⚔️ {isFinal ? "Fight the Final!" : "Fight!"}
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // PHASE: lost
+    if (tournament.phase === "lost") {
+      return (
+        <div style={S.app}>
+          <div style={{ maxWidth: 560, width: "100%", display: "flex", flexDirection: "column", gap: 0 }}>
+            <PlayerHeader {...{ playerName, level, xp, xpToLevel, gold, hp, mana, stats }} />
+            <div style={{ ...S.panel, textAlign: "center" }}>
+              <div style={{ fontSize: 48, marginBottom: 8 }}>💀</div>
+              <div style={{ fontSize: 24, fontWeight: 800, color: "#c04848", marginBottom: 8 }}>Defeated!</div>
+              <div style={{ fontSize: 15, opacity: 0.7, marginBottom: 16 }}>You have been eliminated from the {tournament.capitalName} Tournament in the {ROUND_NAMES[tournament.currentRound]}.</div>
+              {renderBracket()}
+              <button onClick={() => { setTournament(null); setScreen("city"); }} style={{ ...S.btn, width: "100%", marginTop: 8 }}>← Return to City</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // PHASE: done (won)
+    if (tournament.phase === "done") {
+      return (
+        <div style={S.app}>
+          <div style={{ maxWidth: 560, width: "100%", display: "flex", flexDirection: "column", gap: 0 }}>
+            <PlayerHeader {...{ playerName, level, xp, xpToLevel, gold, hp, mana, stats }} />
+            <div style={{ ...S.panel, textAlign: "center", border: "1px solid #ff8c0066", boxShadow: "0 0 32px #ff8c0033" }}>
+              <div style={{ fontSize: 52, marginBottom: 8 }}>🏆</div>
+              <div style={{ fontSize: 26, fontWeight: 800, color: "#ff8c00", marginBottom: 4 }}>Champion!</div>
+              <div style={{ fontSize: 16, ...S.gold, marginBottom: 16 }}>You have won the {tournament.capitalName} Tournament!</div>
+              {tournament.finalLoot && (
+                <div style={{ background: `${tournament.finalLoot.rarityColor}22`, border: `1px solid ${tournament.finalLoot.rarityColor}66`, borderRadius: 8, padding: 12, marginBottom: 16 }}>
+                  <div style={{ fontSize: 13, opacity: 0.6, marginBottom: 4 }}>Final Reward:</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: tournament.finalLoot.rarityColor }}>{tournament.finalLoot.name}</div>
+                  <div style={{ fontSize: 13, color: tournament.finalLoot.rarityColor }}>{tournament.finalLoot.rarity} • {tournament.finalLoot.slot}</div>
+                </div>
+              )}
+              {renderBracket()}
+              <button onClick={() => { setTournament(null); setScreen("city"); }} style={{ ...S.btn, ...S.btnSuccess, width: "100%", marginTop: 8 }}>← Return to City</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+  }
+
+  // TOURNAMENT COMBAT SCREEN
+  if (screen === "tournament_combat" && tournament && enemy) {
+    const ROUND_NAMES = ["Round 1", "Round 2", "Round 3", "Final"];
+    const opp = tournament.currentOpponent;
+    const isFinal = tournament.currentRound === 3;
+    return (
+      <div style={S.app}>
+        {levelUpPopup}
+        <div style={{ maxWidth: 560, width: "100%" }}>
+          {/* Tournament header - replaces PlayerHeader */}
+          <div style={{ textAlign: "center", padding: "16px 0 10px", background: "linear-gradient(180deg, #1a0800, #0d0500)", borderRadius: "10px 10px 0 0", marginBottom: 0 }}>
+            <div style={{ fontSize: 11, letterSpacing: 4, color: "#ff8c00", fontWeight: 700, textTransform: "uppercase", opacity: 0.9 }}>⚔️ {tournament.capitalName} Tournament</div>
+            <div style={{ fontSize: 28, fontWeight: 800, color: "#ff8c00", marginTop: 4, textShadow: "0 0 20px #ff8c0066" }}>{ROUND_NAMES[tournament.currentRound]}</div>
+          </div>
+          {/* Combat panel */}
+          <div style={S.panel}>
+            {/* Arena */}
+            <div style={{
+              display: "flex", justifyContent: "space-around", alignItems: "center",
+              background: "radial-gradient(ellipse at center, #0e0a14 0%, #070508 100%)",
+              borderRadius: 12, padding: "16px 10px", marginBottom: 12,
+              border: "1px solid #b8962a22", position: "relative", minHeight: 260,
+            }}>
+              {/* Player */}
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, flex: 1 }}>
+                <div style={{
+                  width: 180, height: 180, borderRadius: 16,
+                  background: "radial-gradient(circle, #0d0a12, #060408)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  overflow: "hidden",
+                }}>
+                  <HeroImage size={165} heroUrl={heroUrl} />
+                </div>
+                <div style={{ fontWeight: 700, fontSize: 16 }}>{playerName}</div>
+                <div style={{ width: "100%", maxWidth: 180 }}>
+                  <HealthBar current={hp} max={stats.maxHp} pulse />
+                  <HealthBar current={mana} max={stats.maxMana} isMana />
+                </div>
+              </div>
+              {/* VS */}
+              <div style={{ fontSize: 28, fontWeight: 900, color: "#b8962a", textShadow: "0 0 12px #b8962a66", padding: "0 6px" }}>VS</div>
+              {/* Enemy */}
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, flex: 1 }}>
+                <div style={{
+                  width: 180, height: 180, borderRadius: 16,
+                  background: "radial-gradient(circle, #0d0a12, #060408)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  overflow: "hidden",
+                }}>
+                  <SpriteImage spriteKey={
+                    opp?.rarityIdx === 4 ? "ember_drake" :
+                    opp?.rarityIdx === 3 ? "brutal_ogre" :
+                    opp?.rarityIdx === 2 ? "rock_golem" :
+                    opp?.rarityIdx === 1 ? "orc_warchief" :
+                    "leaf_goblin"
+                  } size={165} spriteSheetUrl={spriteSheetUrl} />
+                </div>
+                <div style={{ fontWeight: 700, fontSize: 16, color: opp ? (TOURNAMENT_RARITIES[opp.rarityIdx]?.color || "#c04848") : "#c04848" }}>{enemy.name}</div>
+                <div style={{ fontSize: 12, opacity: 0.6, marginTop: -4 }}>{opp?.label}</div>
+                <div style={{ width: "100%", maxWidth: 180 }}>
+                  <HealthBar current={enemyHp} max={enemy.maxHp} isEnemy />
+                </div>
+              </div>
+            </div>
+            <div style={{ minHeight: 80, maxHeight: 120, overflowY: "auto", fontSize: 14, opacity: 0.8, margin: "8px 0", padding: "6px 8px", background: "#ffffff06", borderRadius: 6 }}>
+              {combatLog.slice(-5).map((l, i) => <div key={i}>{l}</div>)}
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button onClick={attack} style={{ ...S.btn, ...S.btnDanger, flex: 1, minWidth: 80 }} disabled={enemyHp <= 0}>⚔️ Attack</button>
+              <button onClick={() => setSkillsOpen(prev => !prev)} style={{ ...S.btn, flex: 1, minWidth: 80, borderColor: "#a0c4ff", color: "#a0c4ff" }} disabled={enemyHp <= 0 || (learnedAbilities.spells.length === 0 && learnedAbilities.specials.length === 0)}>✨ Skills</button>
+              <button onClick={flee} style={{ ...S.btn, flex: 1, minWidth: 80 }} disabled={enemyHp <= 0}>🏳️ Forfeit</button>
+            </div>
+            {skillsOpen && enemyHp > 0 && (learnedAbilities.spells.length > 0 || learnedAbilities.specials.length > 0) && (
+              <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {learnedAbilities.spells.map(sid => {
+                  const spell = SPELLS.find(s => s.id === sid);
+                  if (!spell) return null;
+                  return <button key={sid} onClick={() => castSpell(spell)} style={{ ...S.btn, fontSize: 13, padding: "4px 10px", borderColor: "#4a7ab8", color: "#4a7ab8" }} disabled={mana < spell.manaCost}>{spell.name} ({spell.manaCost}MP)</button>;
+                })}
+                {learnedAbilities.specials.map(sid => {
+                  const special = SPECIALS.find(s => s.id === sid);
+                  if (!special) return null;
+                  const hpCost = Math.ceil(stats.maxHp * (special.hpCostPercent || 0));
+                  return <button key={sid} onClick={() => useSpecial(special)} style={{ ...S.btn, fontSize: 13, padding: "4px 10px", borderColor: "#c04848", color: "#c04848" }} disabled={hp <= hpCost}>{special.name} ({hpCost}HP)</button>;
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // WORLD SCREEN
   return (
     <div style={S.app}>
@@ -7210,6 +7800,7 @@ function saveGame(state, slotIndex = 0) {
     const data = JSON.stringify({
       ...state,
       completedQuestIds: [...state.completedQuestIds],
+      completedTournaments: [...(state.completedTournaments || [])],
       visitedCities: state.visitedCities || [],  // ✅ Save as array
       timestamp: new Date().toISOString(),  // ✅ Add save timestamp
     });
