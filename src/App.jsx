@@ -183,7 +183,6 @@ function generateTournamentNPC(rarityIdx, playerStats, regionMaxLevel, seed) {
 
 function buildTournamentBracket(playerStats, regionMaxLevel, capitalName, worldSeed) {
   const rng = seededRandom(worldSeed + capitalName.length * 1337 + 55555);
-  const pick = arr => arr[Math.floor(rng() * arr.length)];
 
   // Guaranteed slots
   const guaranteed = [
@@ -204,9 +203,64 @@ function buildTournamentBracket(playerStats, regionMaxLevel, capitalName, worldS
   }
 
   const allRarities = [...guaranteed, ...random8];
-  const npcs = allRarities.map((r, i) =>
-    generateTournamentNPC(r, playerStats, regionMaxLevel, worldSeed + i * 7919 + capitalName.charCodeAt(0))
-  );
+
+  // Pick unique names per rarity — shuffle pool and pick without replacement
+  const usedNames = new Set();
+  const pickUniqueName = (rarityIdx) => {
+    const pool = [...(TOURNAMENT_NAMES_BY_RARITY[rarityIdx] || TOURNAMENT_NAMES_BY_RARITY[0])];
+    // Shuffle pool with seeded rng
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    for (const name of pool) {
+      if (!usedNames.has(name)) { usedNames.add(name); return name; }
+    }
+    // Fallback: if all names used (shouldn't happen with 15 squires), reuse first
+    return pool[0];
+  };
+
+  // Special chance & count per rarity
+  const SPECIAL_CONFIG = [
+    { chance: 0.00, count: 0 }, // Squire
+    { chance: 0.15, count: 1 }, // Uncommon
+    { chance: 0.25, count: 2 }, // Rare
+    { chance: 0.35, count: 2 }, // Epic
+    { chance: 0.50, count: 3 }, // Legendary
+  ];
+
+  const npcs = allRarities.map((r, i) => {
+    const rarity = TOURNAMENT_RARITIES[r];
+    const mult = rarity.statMult;
+    const name = pickUniqueName(r);
+    const cfg = SPECIAL_CONFIG[r] || SPECIAL_CONFIG[0];
+    // Pick specials available at npc level
+    const availableSpecials = SPECIALS.filter(s => s.level <= regionMaxLevel);
+    const npcSpecials = [];
+    const specialPool = [...availableSpecials];
+    for (let j = 0; j < cfg.count && specialPool.length > 0; j++) {
+      const idx = Math.floor(rng() * specialPool.length);
+      npcSpecials.push(specialPool[idx].id);
+      specialPool.splice(idx, 1);
+    }
+    return {
+      name,
+      rarityIdx: r,
+      rarity: rarity.name,
+      rarityColor: rarity.color,
+      label: rarity.label,
+      level: regionMaxLevel,
+      hp:    Math.max(10, Math.round(playerStats.maxHp   * mult)),
+      maxHp: Math.max(10, Math.round(playerStats.maxHp   * mult)),
+      atk:   Math.max(1,  Math.round((playerStats.damage  || 5) * mult)),
+      def:   Math.max(0,  Math.round((playerStats.defense || 2) * mult)),
+      xpRange:   [Math.round(20 * mult * regionMaxLevel * 0.5), Math.round(20 * mult * regionMaxLevel)],
+      goldRange: [Math.round(10 * mult * regionMaxLevel * 0.5), Math.round(10 * mult * regionMaxLevel)],
+      specialChance: cfg.chance,
+      specials: npcSpecials,
+      isNPC: true,
+    };
+  });
 
   // Build bracket: 16 slots, player at random position
   const playerSlot = Math.floor(rng() * 16);
@@ -3976,9 +4030,9 @@ const heroUrl = "hero_sprite.png";
     setPlayerStatus(prevStatus => {
       if (!prevStatus.type) {
         setCombatLog(prev => [...prev, `${getStatusEmoji(statusType)} You are affected by ${statusType}!`]);
-        return {
+return {
           type: statusType,
-          duration: duration,
+          duration: duration + 1,  // +1 compensates for immediate tick
           damagePerTurn: damagePerTurn
         };
       } else {
@@ -3997,9 +4051,9 @@ const heroUrl = "hero_sprite.png";
       if (!prevStatus.type) {
         console.log("✅ Status applied successfully:", statusType);
         setCombatLog(prev => [...prev, `${getStatusEmoji(statusType)} ${enemy.name} is affected by ${statusType}!`]);
-        return {
+return {
           type: statusType,
-          duration: duration,
+          duration: duration + 1,  // +1 compensates for immediate tick
           damagePerTurn: damagePerTurn
         };
       } else {
@@ -4099,6 +4153,8 @@ const heroUrl = "hero_sprite.png";
 
   // ✅ REF für applyStatusDamagePerTurn - wird am Ende definiert, aber Ref wird hier erstellt
   const applyStatusDamagePerTurnRef = useRef(null);
+  const playerStatusRef = useRef({ type: null, duration: 0, damagePerTurn: 0 });
+  const enemyStatusRef = useRef({ type: null, duration: 0, damagePerTurn: 0 });
 
   const castSpell = useCallback((spellId) => {
     if (!enemy || enemyHp <= 0) return;
@@ -4481,103 +4537,72 @@ const heroUrl = "hero_sprite.png";
   // ✅ NEW: Unified Status Damage Function - wird bei JEDEM Turn aufgerufen
   // Anwendet Schaden für BEIDE: Spieler und Enemy
   const applyStatusDamagePerTurn = useCallback(() => {
-    console.log("🔴 applyStatusDamagePerTurn CALLED");
-    console.log("   enemyStatus:", enemyStatus);
-    console.log("   playerStatus:", playerStatus);
-    
+    // Read from refs to always get current values (not stale closure)
+    const curPlayerStatus = playerStatusRef.current;
+    const curEnemyStatus = enemyStatusRef.current;
+
     let enemyStatusDmg = 0;
     let playerStatusDmg = 0;
     const logs = [];
-    
-    // 🔴 ENEMY STATUS SCHADEN - Berechne zuerst, DANN wende an
-    if (enemy && enemyStatus.type && enemyStatus.duration > 0) {
-      console.log("   → Applying ENEMY status damage");
-      
-      if (enemyStatus.type === "burn") {
-        enemyStatusDmg = Math.ceil(enemy.maxHp * 0.10); // 10% Max HP
-      } else if (enemyStatus.type === "bleed") {
-        enemyStatusDmg = Math.ceil(enemy.maxHp * 0.07); // 7% Max HP
-      } else if (enemyStatus.type === "poison") {
-        enemyStatusDmg = Math.ceil(enemy.maxHp * 0.05); // 5% Max HP
-      }
-      // Slow & Stun machen keinen DoT-Schaden
-      
+
+    // ENEMY STATUS DAMAGE
+    if (enemy && curEnemyStatus.type && curEnemyStatus.duration > 0) {
+      if (curEnemyStatus.type === "burn")   enemyStatusDmg = Math.ceil(enemy.maxHp * 0.10);
+      else if (curEnemyStatus.type === "bleed")  enemyStatusDmg = Math.ceil(enemy.maxHp * 0.07);
+      else if (curEnemyStatus.type === "poison") enemyStatusDmg = Math.ceil(enemy.maxHp * 0.05);
+
       if (enemyStatusDmg > 0) {
-        console.log(`   → Enemy takes ${enemyStatusDmg} damage from ${enemyStatus.type}`);
-        logs.push(`${getStatusEmoji(enemyStatus.type)} ${enemy.name} takes ${enemyStatusDmg} damage from ${enemyStatus.type}!`);
+        logs.push(`${getStatusEmoji(curEnemyStatus.type)} ${enemy.name} takes ${enemyStatusDmg} damage from ${curEnemyStatus.type}!`);
         setEnemyHp(prev => {
           const newHp = Math.max(0, prev - enemyStatusDmg);
-          console.log(`   → Enemy HP: ${prev} - ${enemyStatusDmg} = ${newHp}`);
           if (newHp <= 0) {
-          if (enemy?.isTournamentFight) { if (!tournamentDefeatRef.current) handleTournamentDefeat(); return prev; }
             if (enemy?.isTournamentFight) { if (!tournamentDefeatRef.current) handleTournamentDefeat(); return prev; }
-            logs.push(`💀 ${enemy.name} died from ${enemyStatus.type}!`);
+            logs.push(`💀 ${enemy.name} died from ${curEnemyStatus.type}!`);
             endCombat();
           }
           return newHp;
         });
       }
-      
-      // ✅ Duration reduzieren - SEPARATE setState für Duration
-      console.log(`   → Reducing enemy status duration from ${enemyStatus.duration} to ${enemyStatus.duration - 1}`);
       setEnemyStatus(prev => {
         const newDuration = Math.max(0, prev.duration - 1);
-        return {
-          ...prev,
-          duration: newDuration,
-          type: newDuration <= 0 ? null : prev.type
-        };
+        return { ...prev, duration: newDuration, type: newDuration <= 0 ? null : prev.type };
       });
     }
-    
-    // 🔵 PLAYER STATUS SCHADEN - Berechne zuerst, DANN wende an
-    if (playerStatus.type && playerStatus.duration > 0) {
-      console.log("   → Applying PLAYER status damage");
-      
-      if (playerStatus.type === "burn") {
-        playerStatusDmg = Math.ceil(stats.maxHp * 0.10); // 10% Max HP
-      } else if (playerStatus.type === "bleed") {
-        playerStatusDmg = Math.ceil(stats.maxHp * 0.07); // 7% Max HP
-      } else if (playerStatus.type === "poison") {
-        playerStatusDmg = Math.ceil(stats.maxHp * 0.05); // 5% Max HP
-      }
-      // Slow & Stun machen keinen DoT-Schaden
-      
+
+    // PLAYER STATUS DAMAGE
+    if (curPlayerStatus.type && curPlayerStatus.duration > 0) {
+      if (curPlayerStatus.type === "burn")   playerStatusDmg = Math.ceil(stats.maxHp * 0.10);
+      else if (curPlayerStatus.type === "bleed")  playerStatusDmg = Math.ceil(stats.maxHp * 0.07);
+      else if (curPlayerStatus.type === "poison") playerStatusDmg = Math.ceil(stats.maxHp * 0.05);
+
       if (playerStatusDmg > 0) {
-        console.log(`   → Player takes ${playerStatusDmg} damage from ${playerStatus.type}`);
-        logs.push(`${getStatusEmoji(playerStatus.type)} You take ${playerStatusDmg} damage from ${playerStatus.type}!`);
+        logs.push(`${getStatusEmoji(curPlayerStatus.type)} You take ${playerStatusDmg} damage from ${curPlayerStatus.type}!`);
         setHp(prev => Math.max(0, prev - playerStatusDmg));
       }
-      
-      // ✅ Duration reduzieren - SEPARATE setState für Duration
-      console.log(`   → Reducing player status duration from ${playerStatus.duration} to ${playerStatus.duration - 1}`);
       setPlayerStatus(prev => {
         const newDuration = Math.max(0, prev.duration - 1);
-        return {
-          ...prev,
-          duration: newDuration,
-          type: newDuration <= 0 ? null : prev.type
-        };
+        return { ...prev, duration: newDuration, type: newDuration <= 0 ? null : prev.type };
       });
     }
-    
-    // ✅ Logs hinzufügen wenn Status-Schaden angewendet wurde
+
     if ((enemyStatusDmg > 0 || playerStatusDmg > 0) && logs.length > 0) {
-      console.log("   → Adding logs to combat log:", logs);
       setCombatLog(prev => [...prev, ...logs]);
     }
-    console.log("🔴 applyStatusDamagePerTurn DONE\n");
-  }, [enemy, stats, endCombat, enemyStatus.type, enemyStatus.duration, playerStatus.type, playerStatus.duration]);
+  }, [enemy, stats, endCombat]);
 
   // ✅ Update Ref wenn Funktion sich ändert
   useEffect(() => {
     applyStatusDamagePerTurnRef.current = applyStatusDamagePerTurn;
   }, [applyStatusDamagePerTurn]);
 
+  // Keep status refs always current
+  useEffect(() => { playerStatusRef.current = playerStatus; }, [playerStatus]);
+  useEffect(() => { enemyStatusRef.current = enemyStatus; }, [enemyStatus]);
+
   // ✅ SAFETY NET: Wenn Kampf endet (enemy === null), lösche alle Status/Buffs
   // Das ist ein Sicherheitsnetz falls andere Pfade nicht löschen
   useEffect(() => {
-    if (enemy === null && screen !== "combat") {
+    if (enemy === null && screen !== "combat" && screen !== "tournament_combat") {
       console.log("🛡️ SAFETY NET: Clearing all status/buffs because combat ended");
       setPlayerStatus({ type: null, duration: 0, damagePerTurn: 0 });
       setEnemyStatus({ type: null, duration: 0, damagePerTurn: 0 });
@@ -4728,8 +4753,47 @@ const heroUrl = "hero_sprite.png";
     // ✅ NEW: Enemy Buff Decrement vor Counter-Attack
     handleEnemyBuffDecrement();
 
-    // ✅ NEW: Apply Status Damage FIRST before enemy counter-attack
-    applyStatusDamagePerTurnRef.current?.();
+    // ✅ Apply Status Damage using refs (always current values)
+    {
+      const curPS = playerStatusRef.current;
+      const curES = enemyStatusRef.current;
+      const statusLogs = [];
+      if (curES.type && curES.duration > 0) {
+        let dmg = 0;
+        if (curES.type === "burn")   dmg = Math.ceil(enemy.maxHp * 0.10);
+        else if (curES.type === "bleed")  dmg = Math.ceil(enemy.maxHp * 0.07);
+        else if (curES.type === "poison") dmg = Math.ceil(enemy.maxHp * 0.05);
+        if (dmg > 0) {
+          statusLogs.push(`${getStatusEmoji(curES.type)} ${enemy.name} takes ${dmg} damage from ${curES.type}!`);
+          const afterStatusHp = enemyHp - dmg;
+          setEnemyHp(Math.max(0, afterStatusHp));
+          if (afterStatusHp <= 0) {
+            if (statusLogs.length > 0) setCombatLog(prev => [...prev, ...statusLogs]);
+            endCombat();
+            return;
+          }
+        }
+        setEnemyStatus(prev => { const d = Math.max(0, prev.duration - 1); return { ...prev, duration: d, type: d <= 0 ? null : prev.type }; });
+      }
+      if (curPS.type && curPS.duration > 0) {
+        let dmg = 0;
+        if (curPS.type === "burn")   dmg = Math.ceil(stats.maxHp * 0.10);
+        else if (curPS.type === "bleed")  dmg = Math.ceil(stats.maxHp * 0.07);
+        else if (curPS.type === "poison") dmg = Math.ceil(stats.maxHp * 0.05);
+        if (dmg > 0) {
+          statusLogs.push(`${getStatusEmoji(curPS.type)} You take ${dmg} damage from ${curPS.type}!`);
+          const afterStatusPlayerHp = hp - dmg;
+          setHp(Math.max(0, afterStatusPlayerHp));
+          if (afterStatusPlayerHp <= 0 && enemy?.isTournamentFight) {
+            if (statusLogs.length > 0) setCombatLog(prev => [...prev, ...statusLogs]);
+            handleTournamentDefeat();
+            return;
+          }
+        }
+        setPlayerStatus(prev => { const d = Math.max(0, prev.duration - 1); return { ...prev, duration: d, type: d <= 0 ? null : prev.type }; });
+      }
+      if (statusLogs.length > 0) setCombatLog(prev => [...prev, ...statusLogs]);
+    }
     
     // ❌ NUR STUN blockiert die Attacke!
     if (enemyStatus.type === "stun" && enemyStatus.duration > 0) {
@@ -4754,6 +4818,62 @@ const heroUrl = "hero_sprite.png";
       return;
     }
 
+    // Tournament NPC special attack check
+    if (enemy.isTournamentFight && enemy.specials?.length > 0 && Math.random() < (enemy.specialChance || 0)) {
+      const specialId = enemy.specials[Math.floor(Math.random() * enemy.specials.length)];
+      const special = SPECIALS.find(s => s.id === specialId);
+      if (special) {
+        // Apply status DoT tick BEFORE this attack using refs
+        {
+          const curPS = playerStatusRef.current;
+          const curES = enemyStatusRef.current;
+          const sLogs = [];
+          if (curES.type && curES.duration > 0) {
+            let dmg = 0;
+            if (curES.type === "burn") dmg = Math.ceil(enemy.maxHp * 0.10);
+            else if (curES.type === "bleed") dmg = Math.ceil(enemy.maxHp * 0.07);
+            else if (curES.type === "poison") dmg = Math.ceil(enemy.maxHp * 0.05);
+            if (dmg > 0) { sLogs.push(`${getStatusEmoji(curES.type)} ${enemy.name} takes ${dmg} damage!`); setEnemyHp(prev => Math.max(0, prev - dmg)); }
+            setEnemyStatus(prev => { const d = Math.max(0, prev.duration - 1); return { ...prev, duration: d, type: d <= 0 ? null : prev.type }; });
+          }
+          if (curPS.type && curPS.duration > 0) {
+            let dmg = 0;
+            if (curPS.type === "burn") dmg = Math.ceil(stats.maxHp * 0.10);
+            else if (curPS.type === "bleed") dmg = Math.ceil(stats.maxHp * 0.07);
+            else if (curPS.type === "poison") dmg = Math.ceil(stats.maxHp * 0.05);
+            if (dmg > 0) { sLogs.push(`${getStatusEmoji(curPS.type)} You take ${dmg} damage!`); setHp(prev => Math.max(0, prev - dmg)); }
+            setPlayerStatus(prev => { const d = Math.max(0, prev.duration - 1); return { ...prev, duration: d, type: d <= 0 ? null : prev.type }; });
+          }
+          if (sLogs.length > 0) setCombatLog(prev => [...prev, ...sLogs]);
+        }
+        const hpCost = Math.ceil(enemy.maxHp * (special.hpCostPercent || 0));
+        const baseDmg = randInt(special.dmgRange[0], special.dmgRange[1]);
+        const hits = special.hitCount || 1;
+        let totalSpecialDmg = 0;
+        for (let h = 0; h < hits; h++) totalSpecialDmg += Math.max(1, baseDmg - stats.defense);
+        totalSpecialDmg = Math.max(1, totalSpecialDmg);
+        // Apply HP cost to NPC
+        setEnemyHp(prev => Math.max(1, prev - hpCost));
+        newCombatLog.push(`⚡ ${enemy.name} uses ${special.name}! ${totalSpecialDmg} dmg!`);
+        // Floating text
+        addFloatingDamage(totalSpecialDmg, 150, 130, false, false, false, false);
+        // Apply effect to player
+        if (special.effect === "bleed")  setPlayerStatus({ type: "bleed",  duration: (special.bleedDuration  || 3) + 1, damagePerTurn: 0 });
+        if (special.effect === "poison") setPlayerStatus({ type: "poison", duration: (special.poisonDuration || 3) + 1, damagePerTurn: 0 });
+        if (special.effect === "stun")   setPlayerStatus({ type: "stun",   duration: (special.stunDuration   || 1) + 1, damagePerTurn: 0 });
+        if (special.effect === "slow")   setPlayerStatus({ type: "slow",   duration: 2,                         damagePerTurn: 0 });
+        const newHpSpecial = hp - totalSpecialDmg;
+        if (newHpSpecial <= 0) {
+          setCombatLog(newCombatLog);
+          handleTournamentDefeat();
+          return;
+        }
+        setHp(newHpSpecial);
+        setCombatLog(newCombatLog);
+        return;
+      }
+    }
+
     let enemyDmg = calcEnemyDamage(enemy.atk, stats.defense);
     
     // ✅ NEW: Defense Buff (reduziert zusätzlichen Schaden)
@@ -4775,6 +4895,7 @@ const heroUrl = "hero_sprite.png";
     
     const newHp = hp - enemyDmg;
     newCombatLog.push(enemy.isTournamentFight ? getTournamentCombatLog(enemy.name, enemyDmg, false, Date.now() + 1, true) : `${enemy.name} deals ${enemyDmg} damage to you!`);
+    if (enemy.isTournamentFight) addFloatingDamage(enemyDmg, 150, 130, false, false, false, false);
 
     if (newHp <= 0) {
       if (enemy?.isTournamentFight) {
@@ -7217,7 +7338,7 @@ const heroUrl = "hero_sprite.png";
         const prefix = p.isPlayer ? "" : p.rarityIdx === 0 ? "Squire " : "Knight ";
         return (
           <div style={{
-            color, fontSize: 11, fontWeight: p.isPlayer ? 700 : 400,
+            color, fontSize: 13, fontWeight: p.isPlayer ? 700 : 400,
             opacity: (isPast && !isWinner) ? 0.3 : 1,
             padding: "2px 4px",
             background: isWinner && isPast ? color + "22" : "transparent",
@@ -7463,8 +7584,27 @@ const heroUrl = "hero_sprite.png";
                 <div style={{ width: "100%", maxWidth: 180 }}>
                   <HealthBar current={enemyHp} max={enemy.maxHp} isEnemy />
                 </div>
+                {/* Floating Damage Texts */}
+                {floatingDamages.map(fd => (
+                  <FloatingDamageText key={fd.id} damage={fd.damage} x={fd.x} y={fd.y} isCrit={fd.isCrit} isHeal={fd.isHeal} isBuff={fd.isBuff} isMiss={fd.isMiss} />
+                ))}
               </div>
             </div>
+            {/* Status effects */}
+            {(playerStatus.type || enemyStatus.type) && (
+              <div style={{ display: "flex", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+                {playerStatus.type && playerStatus.duration > 0 && (
+                  <span style={{ fontSize: 12, padding: "2px 8px", borderRadius: 4, background: "#c04848aa", color: "#fff" }}>
+                    {getStatusEmoji(playerStatus.type)} You: {playerStatus.type} ({playerStatus.duration})
+                  </span>
+                )}
+                {enemyStatus.type && enemyStatus.duration > 0 && (
+                  <span style={{ fontSize: 12, padding: "2px 8px", borderRadius: 4, background: "#3aaa60aa", color: "#fff" }}>
+                    {getStatusEmoji(enemyStatus.type)} {enemy.name}: {enemyStatus.type} ({enemyStatus.duration})
+                  </span>
+                )}
+              </div>
+            )}
             <div style={{ minHeight: 80, maxHeight: 120, overflowY: "auto", fontSize: 14, opacity: 0.8, margin: "8px 0", padding: "6px 8px", background: "#ffffff06", borderRadius: 6 }}>
               {combatLog.slice(-5).map((l, i) => <div key={i}>{l}</div>)}
             </div>
