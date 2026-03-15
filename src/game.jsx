@@ -4602,7 +4602,7 @@ return {
   // ✅ SAFETY NET: Wenn Kampf endet (enemy === null), lösche alle Status/Buffs
   // Das ist ein Sicherheitsnetz falls andere Pfade nicht löschen
   useEffect(() => {
-    if (enemy === null && screen !== "combat" && screen !== "tournament_combat") {
+    if (enemy === null && screen !== "combat" && screen !== "tournament_combat" && screen !== "tournament") {
       console.log("🛡️ SAFETY NET: Clearing all status/buffs because combat ended");
       setPlayerStatus({ type: null, duration: 0, damagePerTurn: 0 });
       setEnemyStatus({ type: null, duration: 0, damagePerTurn: 0 });
