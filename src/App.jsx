@@ -54,6 +54,34 @@ const CHUNK_TIERS = [
   { id: 16, isDynamic: true, xMin: 430, xMax: 512, yMin: 410, yMax: 512, name: "Realm's End" },
 ];
 
+// ============================================================
+// CAPITAL CITIES — fixed position, fixed name, one per region
+// ============================================================
+const CAPITAL_CITIES = [
+  { regionId: 1,  name: "Valdris",    x: 105, y: 92  },
+  { regionId: 2,  name: "Morghaven",  x: 235, y: 92  },
+  { regionId: 3,  name: "Ashenveil",  x: 365, y: 92  },
+  { regionId: 4,  name: "Crucis",     x: 471, y: 92  },
+  { regionId: 5,  name: "Dreadhollow",x: 105, y: 215 },
+  { regionId: 6,  name: "Ironspire",  x: 235, y: 215 },
+  { regionId: 7,  name: "Solmara",    x: 365, y: 215 },
+  { regionId: 8,  name: "Thornwatch", x: 471, y: 215 },
+  { regionId: 9,  name: "Grimvault",  x: 105, y: 345 },
+  { regionId: 10, name: "Obsidara",   x: 235, y: 345 },
+  { regionId: 11, name: "Vaelthorn",  x: 365, y: 345 },
+  { regionId: 12, name: "Duskaran",   x: 471, y: 345 },
+  { regionId: 13, name: "Pyrethis",   x: 105, y: 461 },
+  { regionId: 14, name: "Noctaris",   x: 235, y: 461 },
+  { regionId: 15, name: "Embraskar",  x: 365, y: 461 },
+  { regionId: 16, name: "Solundra",   x: 471, y: 461 },
+];
+
+// Build a quick lookup: "x,y" -> capital
+const CAPITAL_CITY_MAP = {};
+for (const c of CAPITAL_CITIES) CAPITAL_CITY_MAP[`${c.x},${c.y}`] = { ...c, isCapital: true };
+
+
+
 
 
 const ENEMIES_BY_BIOME = {
@@ -375,25 +403,6 @@ function getDropChancesByItemLevel(itemLevel) {
 }
 
 
-// ✅ NEW: Generate quest for boss cave
-function generateBossCaveQuest(chunkX, chunkY, caveIndex, itemLevel, caveKey) {
-  const questId = `boss_cave_${caveKey || `${chunkX}_${chunkY}_${caveIndex}`}`;
-  return {
-    id: questId,
-    questKind: "bossCaveHunt",
-    title: `Defeat the Guardian in Cave`,
-    description: `Defeat the boss in this cave to claim the treasure.`,
-    chunkX, chunkY, caveIndex, itemLevel,
-    caveKey,  // Reference to cave position
-    targetBosses: 1,
-    bossKillCount: 0,
-    completed: false,
-    accepted: false,
-    goldReward: Math.round(100 * (itemLevel / 5)),
-    xpReward: Math.round(200 * (itemLevel / 5)),
-    rewardLoot: "treasure",
-  };
-}
 
 function generateBossLoot(chunkLevelRange, biome, seed, isFromBossCave = true) {
   const rng = seededRandom(seed);
@@ -627,7 +636,7 @@ const ARMOR_NAMES = {
   },
 };
 
-function generateShopItems(cityName, itemLevelMin, itemLevelMax, seed) {
+function generateShopItems(cityName, itemLevelMin, itemLevelMax, seed, tierLevel = null) {
   // ✅ UPDATED: ItemLevel-based shop items mit Random Levels und Drop-Chancen
   // Schmied nutzt jetzt das gleiche System wie Boss Loot!
   // UNTERSCHIED A bleibt: Nur itemLevelMin bis itemLevelMax (gekürzt)
@@ -638,12 +647,13 @@ function generateShopItems(cityName, itemLevelMin, itemLevelMax, seed) {
   const items = [];
   const slots = ["weapon", "chest", "shield", "head"];
   
-  // ✅ Determine difficulty tier for name selection (based on min level for flavor)
+  // tierLevel allows overriding the level used for item name tier (e.g. Master Blacksmith uses max level)
+  const tierBase = tierLevel !== null ? tierLevel : itemLevelMin;
   let difficultyTier = "Beginner";
-  if (itemLevelMin >= 40) difficultyTier = "Expert";
-  else if (itemLevelMin >= 30) difficultyTier = "Hard";
-  else if (itemLevelMin >= 20) difficultyTier = "Intermediate";
-  else if (itemLevelMin >= 10) difficultyTier = "Easy";
+  if (tierBase >= 40) difficultyTier = "Expert";
+  else if (tierBase >= 30) difficultyTier = "Hard";
+  else if (tierBase >= 20) difficultyTier = "Intermediate";
+  else if (tierBase >= 10) difficultyTier = "Easy";
   
   // ✅ Helper: Generate random itemLevel aus [itemLevelMin, itemLevelMax]
   const generateRandomItemLevel = () => {
@@ -841,11 +851,11 @@ const CITY_NAMES = [
   "Plaguewarden","Deathwatch","Hellwarden","Scourgewarden","Ragefell","Warfell","Crimsonspire","Obsidianmere","Ebonwatch","Wraithwarden",
   "Plaguefell","Deathspire","Hellfall","Scourgefell","Ragefall","Warfall","Crimsongate","Obsidiangate","Ebongate","Ashenfall",
   "Ironfall","Thornfall","Coldfall","Frostfall","Emberfall","Shadowfall","Stormfall","Voidfall","Wolffall","Bonefall",
-  "Slagfall","Dustfall","Ruinfall","Hexfall","Tombfall","Pestfall","Scourgefall","Bleakwall","Greywall","Murkwall",
-  "Hazwall","Drearwall","Fogwall","Gloomwall","Mirewall","Wraithwall","Plaguewall","Bleakhaven","Greyhaven","Murkhaven",
+  "Slagfall","Ruinfall","Hexfall","Tombfall","Pestfall","Scourgefall","Bleakwall","Greywall","Murkwall",
+  "Hazwall","Fogwall","Gloomwall","Mirewall","Wraithwall","Plaguewall","Bleakhaven","Greyhaven","Murkhaven",
   "Hazhaven","Drearhaven","Foghaven","Gloomhaven","Mirehaven","Wraithhaven","Plaguehaven","Bleakmoor","Greymoor","Murkmoor",
   "Hazmoor","Drearmoor","Fogmoor","Gloommoor","Miremoor","Wraithmoor","Plaguemoor","Stonehaven","Ironhaven","Thorhaven",
-  "Coldhaven","Nighthaven","Emberhaven","Shadowhaven","Doomhaven","Ashhollow","Ironhollow","Thornhollow","Coldhollow","Frosthollow",
+  "Coldhaven","Nighthaven","Emberhaven","Shadowhaven","Doomhaven","Ironhollow","Thornhollow","Coldhollow","Frosthollow",
   "Nighthollow","Emberhollow","Shadowhollow","Doomhollow","Stormhollow","Voidhollow","Bloodhollow","Wolfhollow","Bonehollow","Slaghollow",
   "Dusthollow","Ruinhollow","Hexhollow","Tombhollow","Pesthollow","Grimcliff","Darkcliff","Ironcliff","Thorncliff","Coldcliff",
   "Frostcliff","Nightcliff","Embercliff","Shadowcliff","Stonecliff","Voidcliff","Bloodcliff","Wolfcliff","Bonecliff","Slagcliff",
@@ -866,8 +876,14 @@ function hexToRgb(hex) {
 function rgbToHex(r,g,b) {
   return '#' + [r,g,b].map(v => Math.round(Math.max(0,Math.min(255,v))).toString(16).padStart(2,'0')).join('');
 }
-function blendBiomeColor(tx, ty, worldSeed) {
-  const center = BIOME_COLORS[getBiome(tx, ty, worldSeed)] || '#333';
+function blendBiomeColor(tx, ty, worldSeed, caves, defeatedBosses) {
+  const getTileColor = (x, y) => {
+    if (x < 0 || y < 0 || x >= WORLD_SIZE || y >= WORLD_SIZE) return '#333';
+    const ck = `${x},${y}`;
+    if (caves[ck] && !defeatedBosses.has(ck)) return '#000000';
+    return BIOME_COLORS[getBiome(x, y, worldSeed)] || '#333';
+  };
+  const center = getTileColor(tx, ty);
   const neighbors = [
     [tx-1,ty],[tx+1,ty],[tx,ty-1],[tx,ty+1],
     [tx-1,ty-1],[tx+1,ty-1],[tx-1,ty+1],[tx+1,ty+1],
@@ -876,8 +892,7 @@ function blendBiomeColor(tx, ty, worldSeed) {
   let [cr,cg,cb] = hexToRgb(center);
   let totalW = 1.0;
   neighbors.forEach(([nx,ny], i) => {
-    if (nx < 0 || ny < 0 || nx >= WORLD_SIZE || ny >= WORLD_SIZE) return;
-    const nc = BIOME_COLORS[getBiome(nx, ny, worldSeed)] || '#333';
+    const nc = getTileColor(nx, ny);
     const [nr,ng,nb] = hexToRgb(nc);
     const w = weights[i];
     cr += nr * w; cg += ng * w; cb += nb * w;
@@ -925,13 +940,43 @@ function tileHasTree(tx, ty, worldSeed, cities) {
 function getTreeVariant(tx, ty, worldSeed, biome) {
   const h = Math.abs((tx * 1234567 + ty * 7654321 + worldSeed) >>> 0);
   const r = (h % 100) / 100;
-  // biome-specific variants
   if (biome === "tundra" || biome === "glacier") return "pine";
-  if (biome === "swamp") return "swamp";
-  if (biome === "desert" || biome === "savanna") return "dead";
+  if (biome === "swamp" || biome === "savanna") return r > 0.5 ? "autumn" : "dead";
+  if (biome === "desert") return "dead";
   if (biome === "mountain" || biome === "volcanic") return r > 0.5 ? "dead" : "pine";
-  // forest, jungle, grassland
   return r > 0.7 ? "autumn" : "forest";
+}
+
+const ROCK_BIOMES = new Set(["ocean","coast","river","lake","mountain"]);
+const ROCK_CELL = 20;
+function tileHasRock(tx, ty, worldSeed) {
+  const cellX = Math.floor(tx / ROCK_CELL);
+  const cellY = Math.floor(ty / ROCK_CELL);
+  // Use different seed offset than trees to avoid overlap
+  const h = Math.abs((cellX * 668265263 + cellY * 374761393 + worldSeed * 1442695041) >>> 0);
+  const makeRng = (seed, i) => {
+    const s = Math.abs((seed * 22695477 + i * 1664525) >>> 0);
+    const x = ((s * 1664525 + 1013904223) >>> 0) / 4294967295;
+    const y = ((s * 22695477 + 1) >>> 0) / 4294967295;
+    return { x, y };
+  };
+  const positions = [];
+  for (let i = 0; i < 12; i++) {
+    const rng = makeRng(h, i);
+    const ox = 1 + Math.floor(rng.x * (ROCK_CELL - 2));
+    const oy = 1 + Math.floor(rng.y * (ROCK_CELL - 2));
+    const key = `${ox},${oy}`;
+    if (!positions.some(p => p === key)) {
+      positions.push(key);
+      if ((cellX * ROCK_CELL + ox) === tx && (cellY * ROCK_CELL + oy) === ty) return true;
+    }
+  }
+  return false;
+}
+
+function getRockVariant(biome) {
+  if (biome === "ocean" || biome === "river" || biome === "lake") return "tidepool";
+  return "boulder"; // coast, mountain
 }
 
 function seededRandom(seed) {
@@ -1081,16 +1126,14 @@ function getBiome(x, y, seed) {
 }
 
 function getChunkTier(x, y) {
-  // Ignoriere Ocean-Biom - beginne erst ab Coast
-  // Finde den Chunk basierend auf x,y Koordinaten
-  // ✅ FIX: Use inclusive boundaries (<=) to avoid gaps between chunks
-  // Positions like (300, 150) that fall on boundaries now assign correctly
+  // Use xMin inclusive, xMax exclusive and yMin inclusive, yMax exclusive
+  // to avoid boundary coords matching multiple regions
   for (const chunk of CHUNK_TIERS) {
-    if (x >= chunk.xMin && x <= chunk.xMax && y >= chunk.yMin && y <= chunk.yMax) {
+    if (x >= chunk.xMin && x < chunk.xMax && y >= chunk.yMin && y < chunk.yMax) {
       return chunk;
     }
   }
-  // Fallback zur Starter-Zone (Chunk 10 = "Starter Plains", Level 1-5)
+  // Fallback zur Starter-Zone (Chunk 10 = Midland Plains, Level 1-5)
   return CHUNK_TIERS.find(c => c.id === 10);
 }
 
@@ -1459,7 +1502,6 @@ function generateRegionCaves(regionId, seed, cities) {
         bossDef: scaledStats.def,
         lootSeed,
         isBossCave: true,
-        questId: `boss_cave_${regionId}_${i}`,
       }
     });
   }
@@ -1489,7 +1531,18 @@ function generateChunkCaves(chunkX, chunkY, seed, cities) {
 // ============================================================
 
 function useChunkWorld(worldSeed, playerPos) {
-  const [cities, setCities] = useState({});
+  // Pre-load capital cities so they are always present
+  const initialCities = {};
+  for (const cap of CAPITAL_CITIES) {
+    const region = CHUNK_TIERS.find(r => r.id === cap.regionId);
+    const diff = region && region.levelRange ? getDifficultyTier(region.levelRange[0]) : "Beginner";
+    const itemLvl = region && region.levelRange ? region.levelRange[0] : 1;
+    initialCities[`${cap.x},${cap.y}`] = {
+      name: cap.name, x: cap.x, y: cap.y,
+      difficulty: diff, itemLevel: itemLvl, isCapital: true,
+    };
+  }
+  const [cities, setCities] = useState(initialCities);
   const [caves, setCaves] = useState({});
   const loadedChunksRef = useRef(new Set());
   const loadedRegionsRef = useRef(new Set());
@@ -1599,7 +1652,7 @@ function formatBiomeNames(biomes) {
   return ` Found in: ${formattedBiomes}.`;
 }
 
-function generateQuestgiverQuests(itemLevel, cities, originCityName, chunkX, chunkY, acceptedChunkBossQuests, isInSameChunk = false, worldSeed = 0, regionName = "", completedQuestIds = new Set()) {
+function generateQuestgiverQuests(itemLevel, cities, originCityName, chunkX, chunkY, acceptedChunkBossQuests, isInSameChunk = false, worldSeed = 0, regionName = "", completedQuestIds = new Set(), regionId = null) {
   // ✅ SEEDED RNG für deterministische Quests
   const rng = seededRandom(worldSeed + 99999 + (originCityName.length * 17) + (chunkX || 0) * 1337 + (chunkY || 0) * 7331);
   
@@ -1622,11 +1675,12 @@ function generateQuestgiverQuests(itemLevel, cities, originCityName, chunkX, chu
 
   const DELIVER_ITEMS = ["Sealed Letter", "Royal Package", "Merchant's Goods", "Sacred Relic", "Map Fragment", "Enchanted Scroll", "Rare Medicine", "Trade Agreement", "Forbidden Tome", "Golden Chalice"];
 
-  // CHUNK BOSS HUNT QUEST — shown at every city in the region
-  const bossQuestId = `chunk_boss_${chunkX}_${chunkY}`;
-  const alreadyAccepted = !!acceptedChunkBossQuests?.[`chunk_${chunkX}_${chunkY}`];
+  // BOSS HUNT QUEST — one per region, shown at every city in the region
+  const effectiveRegionId = regionId !== null ? regionId : `${chunkX}_${chunkY}`;
+  const bossQuestId = `chunk_boss_region_${effectiveRegionId}`;
+  const alreadyAccepted = !!acceptedChunkBossQuests?.[`region_${effectiveRegionId}`];
   const alreadyCompleted = completedQuestIds.has(bossQuestId);
-  if (chunkX !== undefined && chunkY !== undefined && !alreadyAccepted && !alreadyCompleted) {
+  if (!alreadyAccepted && !alreadyCompleted) {
     const regionLabel = regionName ? ` in ${regionName}` : "";
     quests.push({
       id: bossQuestId,
@@ -1634,6 +1688,7 @@ function generateQuestgiverQuests(itemLevel, cities, originCityName, chunkX, chu
       questKind: "chunkBossHunt",
       title: `Defeat the Cave Guardian${regionLabel}!`,
       description: `Slay the powerful boss that dwells in the caves of this region. Their treasure is yours to claim.`,
+      targetRegionId: effectiveRegionId,
       targetChunkX: chunkX,
       targetChunkY: chunkY,
       targetBosses: 1,
@@ -2672,6 +2727,37 @@ function CrownSVG({ size = 24 }) {
   );
 }
 
+function RockSVG({ variant = "tidepool", size = 40 }) {
+  const s = size;
+  if (variant === "tidepool") return (
+    <svg width={s} height={s} viewBox="0 0 40 40" fill="none" style={{ position:"absolute", bottom:0, left:"50%", transform:"translateX(-50%)", pointerEvents:"none", overflow:"visible" }}>
+      <ellipse cx="8" cy="30" rx="7" ry="4" fill="#1e1c2a"/>
+      <ellipse cx="30" cy="28" rx="9" ry="5" fill="#1e1c2a"/>
+      <ellipse cx="20" cy="24" rx="14" ry="8" fill="#1e1c2a"/>
+      <ellipse cx="8" cy="28" rx="6" ry="4" fill="#2c2a3a"/>
+      <ellipse cx="30" cy="26" rx="8" ry="4" fill="#2c2a3a"/>
+      <ellipse cx="20" cy="22" rx="13" ry="7" fill="#2c2a3a"/>
+      <ellipse cx="20" cy="24" rx="7" ry="3.5" fill="#1a3a5a" opacity="0.7"/>
+      <ellipse cx="20" cy="24" rx="4" ry="2" fill="#1e4a6a" opacity="0.5"/>
+      <path d="M14,24 Q20,21 26,24" fill="none" stroke="#3a6a8a" strokeWidth="0.6" opacity="0.6"/>
+      <ellipse cx="10" cy="27" rx="2.5" ry="1.2" fill="#1a3a18" opacity="0.8"/>
+      <ellipse cx="29" cy="25" rx="2.5" ry="1.2" fill="#1a3a18" opacity="0.7"/>
+    </svg>
+  );
+  // boulder
+  return (
+    <svg width={s} height={s} viewBox="0 0 40 40" fill="none" style={{ position:"absolute", bottom:0, left:"50%", transform:"translateX(-50%)", pointerEvents:"none", overflow:"visible" }}>
+      <ellipse cx="20" cy="30" rx="16" ry="10" fill="#2a2830"/>
+      <ellipse cx="20" cy="26" rx="15" ry="10" fill="#3a3642"/>
+      <ellipse cx="14" cy="22" rx="9" ry="7" fill="#46424e"/>
+      <ellipse cx="26" cy="21" rx="8" ry="6" fill="#42404a"/>
+      <path d="M7,27 Q13,18 20,20 Q27,18 33,26" fill="none" stroke="#52505a" strokeWidth="0.9"/>
+      <path d="M12,25 Q17,20 21,22" fill="none" stroke="#52505a" strokeWidth="0.7"/>
+      <ellipse cx="20" cy="32" rx="13" ry="4" fill="#1e1c28" opacity="0.5"/>
+    </svg>
+  );
+}
+
 function TreeSVG({ variant = "forest", size = 40 }) {
   const s = size;
   if (variant === "pine") return (
@@ -2913,28 +2999,6 @@ function CombatItemsPanel({ inventory, useItemInCombat }) {
   );
 }
 
-function CaveQuestBanner({ quests, caveConfirm, getQuestProgress }) {
-  const relatedQuest = quests.find(q =>
-    q.questKind === "chunkBossHunt" &&
-    q.targetChunkX === Math.floor(caveConfirm.x / CHUNK_SIZE) &&
-    q.targetChunkY === Math.floor(caveConfirm.y / CHUNK_SIZE)
-  );
-  if (!relatedQuest) return null;
-  if (!relatedQuest.accepted) return (
-    <div style={{ background: "#b8962a22", borderLeft: "4px solid #b8962a", padding: 12, borderRadius: 6, marginBottom: 16, fontSize: 14, textAlign: "left" }}>
-      <div style={{ fontWeight: 600, color: "#b8962a", marginBottom: 4 }}>📜 Quest Available</div>
-      <div style={{ opacity: 0.8 }}>A quest awaits in the nearby town:<br/><span style={{ color: "#b8962a", fontWeight: 500 }}>"{relatedQuest.title}"</span></div>
-    </div>
-  );
-  const progress = getQuestProgress(relatedQuest);
-  return (
-    <div style={{ background: "#3aaa6022", borderLeft: "4px solid #3aaa60", padding: 12, borderRadius: 6, marginBottom: 16, fontSize: 14, textAlign: "left" }}>
-      <div style={{ fontWeight: 600, color: "#3aaa60", marginBottom: 4 }}>⚔️ Quest Active</div>
-      <div style={{ opacity: 0.8 }}>{relatedQuest.title}<br/><span style={{ color: "#3aaa60" }}>Progress: {progress}/{relatedQuest.targetBosses}</span></div>
-    </div>
-  );
-}
-
 function SkillsPanel({ learnedAbilities, onClose }) {
   const tag = (label, cls) => (
     <span style={{
@@ -3127,7 +3191,7 @@ const heroUrl = "hero_sprite.png";
   const [enemyHp, setEnemyHp] = useState(0);
   const [combatStartPos, setCombatStartPos] = useState(null);
   const [combatLog, setCombatLog] = useState([]);
-  const [cityQuestsCache, setCityQuestsCache] = useState(isLoaded ? playerData.cityQuestsCache || {} : {});
+  const [cityQuestsCache, setCityQuestsCache] = useState({});  // Always regenerate, never load from save
   const [cityBulletinCache, setCityBulletinCache] = useState(isLoaded ? playerData.cityBulletinCache || {} : {});
   const [boughtUniqueIds, setBoughtUniqueIds] = useState(isLoaded ? new Set(playerData.boughtUniqueIds || []) : new Set());
   const [defeatedBosses, setDefeatedBosses] = useState(isLoaded ? new Set(playerData.defeatedBosses || []) : new Set());
@@ -3159,6 +3223,7 @@ const heroUrl = "hero_sprite.png";
     }
   }, [combatLog]);
   const bigMapCanvasRef = useRef(null);
+  const mapAnimRef = useRef(null);
 
   // Auto-save when returning to world screen or entering a city
   const doSave = useCallback(() => {
@@ -3567,8 +3632,7 @@ const heroUrl = "hero_sprite.png";
         // Any boss from the same region counts
         const [caveWx, caveWy] = enemy.caveKey.split(",").map(Number);
         const caveRegion = getChunkTier(caveWx, caveWy);
-        const questRegion = getChunkTier(q.targetChunkX * CHUNK_SIZE + CHUNK_SIZE / 2, q.targetChunkY * CHUNK_SIZE + CHUNK_SIZE / 2);
-        if (caveRegion && questRegion && caveRegion.id === questRegion.id && (q.bossKillCount || 0) < q.targetBosses) {
+        if (caveRegion && String(caveRegion.id) === String(q.targetRegionId) && (q.bossKillCount || 0) < q.targetBosses) {
           return { ...q, bossKillCount: (q.bossKillCount || 0) + 1 };
         }
       }
@@ -4456,7 +4520,14 @@ const heroUrl = "hero_sprite.png";
         setInventory(prev => canAddItem(prev, bossLootItem) ? [...prev, bossLootItem] : prev);
       }
 
-      // Update kill quest progress (moved to first endCombat section)
+      // Update kill quest progress
+      setQuests(prev => prev.map(q => {
+        if (!q.accepted) return q;
+        if (q.questKind === "kill" && q.targetEnemy === enemy.name && (q.killCount || 0) < q.targetCount) {
+          return { ...q, killCount: (q.killCount || 0) + 1 };
+        }
+        return q;
+      }));
 
       const lootStr = lootItems.length > 0 ? `, and ${lootItems.map(i => {
         if (i.type === "questitem") return `**${i.name}** (Quest Item)`;  // ✅ Quest Item type
@@ -4725,17 +4796,20 @@ const heroUrl = "hero_sprite.png";
     setCombatItemsOpen(false);
   }, [enemy, enemyHp, stats, gold, inventory, addLog, lastCity, startX, startY, playerStatus, enemyStatus, handlePlayerStatusCheck, handlePlayerBuffDecrement]);
 
-  const getCityQuests = useCallback((cityName, _unusedDiff) => {
-    const cityKey = Object.keys(cities).find(k => cities[k].name === cityName);
-    const city = cityKey ? cities[cityKey] : null;
+  const getCityQuests = useCallback((cityName, _unusedDiff, cityObj = null) => {
+    const cityKey = cityObj ? `${cityObj.x},${cityObj.y}` : Object.keys(cities).find(k => cities[k].name === cityName && cities[k].x !== undefined);
+    const city = cityObj || (cityKey ? cities[cityKey] : null);
     const chunkX = city ? Math.floor(city.x / CHUNK_SIZE) : undefined;
     const chunkY = city ? Math.floor(city.y / CHUNK_SIZE) : undefined;
-    const bossQuestId = `chunk_boss_${chunkX}_${chunkY}`;
-    const bossAccepted = !!acceptedChunkBossQuests?.[`chunk_${chunkX}_${chunkY}`];
+    const region = city ? getChunkTier(city.x, city.y) : null;
+    const regionId = region ? region.id : (chunkX + "_" + chunkY);
+    const bossQuestId = `chunk_boss_region_${regionId}`;
+    const bossAccepted = !!acceptedChunkBossQuests?.[`region_${regionId}`];
     const bossCompleted = completedQuestIds.has(bossQuestId);
 
     // Invalidate cache if boss quest status changed
-    const cached = cityQuestsCache[cityName];
+    const cacheKey = city ? `${city.x},${city.y}` : cityName;
+    const cached = cityQuestsCache[cacheKey];
     const cachedHasBoss = cached?.some(q => q.questKind === "chunkBossHunt");
     const shouldHaveBoss = !bossAccepted && !bossCompleted;
     const cacheStale = cachedHasBoss !== shouldHaveBoss;
@@ -4750,8 +4824,9 @@ const heroUrl = "hero_sprite.png";
       const chunk = city ? getChunkTier(city.x, city.y) : null;
       const regionName = chunk?.name || "";
 
-      const generated = generateQuestgiverQuests(cityItemLevel, cities, cityName, chunkX, chunkY, acceptedChunkBossQuests, false, worldSeed, regionName, completedQuestIds);
-      setCityQuestsCache(prev => ({ ...prev, [cityName]: generated }));
+      const generated = generateQuestgiverQuests(cityItemLevel, cities, cityName, chunkX, chunkY, acceptedChunkBossQuests, false, worldSeed, regionName, completedQuestIds, chunk?.id ?? null);
+      const cacheKey = city ? `${city.x},${city.y}` : cityName;
+      setCityQuestsCache(prev => ({ ...prev, [cacheKey]: generated }));
       return generated;
     }
     return cached;
@@ -4854,7 +4929,7 @@ const heroUrl = "hero_sprite.png";
     
     // Mark chunk boss quest as accepted
     if (quest.questKind === "chunkBossHunt") {
-      setAcceptedChunkBossQuests(prev => ({ ...prev, [`chunk_${quest.targetChunkX}_${quest.targetChunkY}`]: true }));
+      setAcceptedChunkBossQuests(prev => ({ ...prev, [`region_${quest.targetRegionId}`]: true }));
       addLog(`⚔️ Accepted quest: ${quest.title}`);
       return;
     }
@@ -4892,11 +4967,12 @@ const heroUrl = "hero_sprite.png";
     
     // ✅ NEW: Boss Hunt Quest - 70% chance für Boss Loot!
     if (quest.questKind === "chunkBossHunt" && Math.random() < 0.7) {
-      const chunk = getChunkTier(quest.targetChunkX * 32, quest.targetChunkY * 32);  // ✅ Convert to world coords
-      const chunkBiome = getBiome(quest.targetChunkX * 32, quest.targetChunkY * 32, worldSeed);
+      const chunk = CHUNK_TIERS.find(t => String(t.id) === String(quest.targetRegionId)) || null;
+      const centerX = chunk ? Math.floor((chunk.xMin + chunk.xMax) / 2) : 0;
+      const centerY = chunk ? Math.floor((chunk.yMin + chunk.yMax) / 2) : 0;
+      const chunkBiome = getBiome(centerX, centerY, worldSeed);
       if (chunk && chunk.levelRange) {
-        // ✅ Roll boss loot like a real boss would drop!
-        const bossLoot = generateBossLoot(chunk.levelRange, chunkBiome, questId.charCodeAt(0) * worldSeed + quest.targetChunkX * quest.targetChunkY);
+        const bossLoot = generateBossLoot(chunk.levelRange, chunkBiome, questId.charCodeAt(0) * worldSeed + (chunk.id || 0));
         setInventory(prev => [...prev, bossLoot]);
         addLog(`🎁 Quest Reward: ${bossLoot.name} (${bossLoot.rarity})!`);
       }
@@ -4927,7 +5003,7 @@ const heroUrl = "hero_sprite.png";
     if (quest.questKind === "chunkBossHunt") {
       setAcceptedChunkBossQuests(prev => {
         const updated = { ...prev };
-        delete updated[`chunk_${quest.targetChunkX}_${quest.targetChunkY}`];
+        delete updated[`region_${quest.targetRegionId}`];
         return updated;
       });
       addLog(`✅ Quest complete: ${quest.title}! +${quest.goldReward}g, +${quest.xpReward} XP`);
@@ -4949,12 +5025,13 @@ const heroUrl = "hero_sprite.png";
         const isAdjacent = Math.abs(dx) <= 1 && Math.abs(dy) <= 1 && !isPlayer;
         const cityKey = `${tx},${ty}`;
         const isCity = cities[cityKey];
+        const isCapital = isCity && cities[cityKey].isCapital;
         const isCityAbove = !!cities[`${tx},${ty - 1}`];
         const isCave = caves[cityKey] && !defeatedBosses.has(cityKey);
         const isDefeatedCave = caves[cityKey] && defeatedBosses.has(cityKey);
         const tileBiome = isValid ? getBiome(tx, ty, worldSeed) : "void";
         const tileDiff = isValid ? getDifficulty(tx, ty) : null;
-        const tileColor = isValid ? blendBiomeColor(tx, ty, worldSeed) : "#050810";
+        const tileColor = isValid ? blendBiomeColor(tx, ty, worldSeed, caves, defeatedBosses) : "#050810";
 
         tiles.push(
           <div
@@ -4983,46 +5060,51 @@ const heroUrl = "hero_sprite.png";
                 </g>
               </svg>
             )}
-            {isValid && !isPlayer && !isCity && !isCave && !isDefeatedCave && !isCityAbove && tileHasTree(tx, ty, worldSeed, cities) && (
+            {isValid && !isPlayer && !isCity && !isCave && !isDefeatedCave && !isCityAbove && !["ocean","coast","river","lake"].includes(tileBiome) && tileHasTree(tx, ty, worldSeed, cities) && (
               <TreeSVG variant={getTreeVariant(tx, ty, worldSeed, tileBiome)} size={TILE_PX * 1.4} />
+            )}
+            {isValid && !isPlayer && !isCity && !isCave && !isDefeatedCave && (tileBiome === "coast" || tileBiome === "mountain") && tileHasRock(tx, ty, worldSeed) && !tileHasTree(tx, ty, worldSeed, cities) && (
+              <RockSVG variant="boulder" size={TILE_PX * 1.2} />
             )}
             {isCity && (
               <svg width={TILE_PX * 3.125} height={TILE_PX * 3.125} viewBox="0 0 170 230" fill="none" style={{overflow:"visible", position:"absolute", bottom:0, left:"50%", transform:"translateX(-50%)", zIndex: 1}}>
                 {/* Base wall */}
-                <rect x="20" y="110" width="130" height="115" fill="#100c18" stroke="#5a5a8a" strokeWidth="1.2"/>
-                <line x1="20" y1="130" x2="150" y2="130" stroke="#2a2a4a" strokeWidth="0.8"/>
-                <line x1="20" y1="152" x2="150" y2="152" stroke="#2a2a4a" strokeWidth="0.8"/>
-                <line x1="20" y1="174" x2="150" y2="174" stroke="#2a2a4a" strokeWidth="0.8"/>
+                <rect x="20" y="110" width="130" height="115" fill="#100c18" stroke={isCapital ? "#ff8c00" : "#5a5a8a"} strokeWidth={isCapital ? "2" : "1.2"}/>
+                <line x1="20" y1="130" x2="150" y2="130" stroke={isCapital ? "#b8962a44" : "#2a2a4a"} strokeWidth="0.8"/>
+                <line x1="20" y1="152" x2="150" y2="152" stroke={isCapital ? "#b8962a44" : "#2a2a4a"} strokeWidth="0.8"/>
+                <line x1="20" y1="174" x2="150" y2="174" stroke={isCapital ? "#b8962a44" : "#2a2a4a"} strokeWidth="0.8"/>
                 {/* Left tower */}
-                <rect x="10" y="85" width="38" height="140" fill="#100c18" stroke="#5a5a8a" strokeWidth="1.2"/>
-                <rect x="10" y="72" width="10" height="16" fill="#100c18" stroke="#5a5a8a" strokeWidth="1"/>
-                <rect x="24" y="72" width="10" height="16" fill="#100c18" stroke="#5a5a8a" strokeWidth="1"/>
-                <rect x="14" y="105" width="10" height="14" rx="5" fill="#0a0a14" stroke="#3a3a5a" strokeWidth="0.8"/>
-                <rect x="15" y="106" width="8" height="12" rx="4" fill="#b8962a" opacity="0.6"/>
+                <rect x="10" y="85" width="38" height="140" fill="#100c18" stroke={isCapital ? "#ff8c00" : "#5a5a8a"} strokeWidth={isCapital ? "2" : "1.2"}/>
+                <rect x="10" y="72" width="10" height="16" fill="#100c18" stroke={isCapital ? "#ff8c00" : "#5a5a8a"} strokeWidth="1"/>
+                <rect x="24" y="72" width="10" height="16" fill="#100c18" stroke={isCapital ? "#ff8c00" : "#5a5a8a"} strokeWidth="1"/>
+                <rect x="14" y="105" width="10" height="14" rx="5" fill="#0a0a14" stroke={isCapital ? "#b8962a66" : "#3a3a5a"} strokeWidth="0.8"/>
+                <rect x="15" y="106" width="8" height="12" rx="4" fill="#b8962a" opacity={isCapital ? "1" : "0.6"}/>
                 {/* Right tower */}
-                <rect x="122" y="85" width="38" height="140" fill="#100c18" stroke="#5a5a8a" strokeWidth="1.2"/>
-                <rect x="126" y="72" width="10" height="16" fill="#100c18" stroke="#5a5a8a" strokeWidth="1"/>
-                <rect x="140" y="72" width="10" height="16" fill="#100c18" stroke="#5a5a8a" strokeWidth="1"/>
-                <rect x="146" y="105" width="10" height="14" rx="5" fill="#0a0a14" stroke="#3a3a5a" strokeWidth="0.8"/>
+                <rect x="122" y="85" width="38" height="140" fill="#100c18" stroke={isCapital ? "#ff8c00" : "#5a5a8a"} strokeWidth={isCapital ? "2" : "1.2"}/>
+                <rect x="126" y="72" width="10" height="16" fill="#100c18" stroke={isCapital ? "#ff8c00" : "#5a5a8a"} strokeWidth="1"/>
+                <rect x="140" y="72" width="10" height="16" fill="#100c18" stroke={isCapital ? "#ff8c00" : "#5a5a8a"} strokeWidth="1"/>
+                <rect x="146" y="105" width="10" height="14" rx="5" fill="#0a0a14" stroke={isCapital ? "#b8962a66" : "#3a3a5a"} strokeWidth="0.8"/>
                 {/* Center tower */}
-                <rect x="58" y="55" width="54" height="170" fill="#100c18" stroke="#5a5a8a" strokeWidth="1.2"/>
-                <rect x="58" y="40" width="12" height="18" fill="#100c18" stroke="#5a5a8a" strokeWidth="1"/>
-                <rect x="76" y="40" width="12" height="18" fill="#100c18" stroke="#5a5a8a" strokeWidth="1"/>
-                <rect x="94" y="40" width="12" height="18" fill="#100c18" stroke="#5a5a8a" strokeWidth="1"/>
-                <rect x="73" y="78" width="24" height="28" rx="12" fill="#0a0a14" stroke="#3a3a5a" strokeWidth="0.8"/>
-                <rect x="74" y="79" width="22" height="26" rx="11" fill="#b8962a" opacity="0.6"/>
-                <rect x="73" y="118" width="24" height="28" rx="12" fill="#0a0a14" stroke="#3a3a5a" strokeWidth="0.8"/>
+                <rect x="58" y="55" width="54" height="170" fill="#100c18" stroke={isCapital ? "#ff8c00" : "#5a5a8a"} strokeWidth={isCapital ? "2" : "1.2"}/>
+                <rect x="58" y="40" width="12" height="18" fill="#100c18" stroke={isCapital ? "#ff8c00" : "#5a5a8a"} strokeWidth="1"/>
+                <rect x="76" y="40" width="12" height="18" fill="#100c18" stroke={isCapital ? "#ff8c00" : "#5a5a8a"} strokeWidth="1"/>
+                <rect x="94" y="40" width="12" height="18" fill="#100c18" stroke={isCapital ? "#ff8c00" : "#5a5a8a"} strokeWidth="1"/>
+                <rect x="73" y="78" width="24" height="28" rx="12" fill="#0a0a14" stroke={isCapital ? "#b8962a66" : "#3a3a5a"} strokeWidth="0.8"/>
+                <rect x="74" y="79" width="22" height="26" rx="11" fill="#b8962a" opacity={isCapital ? "1" : "0.6"}/>
+                <rect x="73" y="118" width="24" height="28" rx="12" fill="#0a0a14" stroke={isCapital ? "#b8962a66" : "#3a3a5a"} strokeWidth="0.8"/>
                 {/* Gate */}
                 <rect x="73" y="168" width="24" height="57" fill="#060408"/>
-                <path d="M73,188 Q73,168 85,168 Q97,168 97,188" fill="#060408" stroke="#3a3a5a" strokeWidth="0.8"/>
-                <line x1="79" y1="170" x2="79" y2="225" stroke="#2a2a3a" strokeWidth="1"/>
-                <line x1="85" y1="170" x2="85" y2="225" stroke="#2a2a3a" strokeWidth="1"/>
-                <line x1="91" y1="170" x2="91" y2="225" stroke="#2a2a3a" strokeWidth="1"/>
-                <line x1="73" y1="190" x2="97" y2="190" stroke="#2a2a3a" strokeWidth="1"/>
-                <line x1="73" y1="208" x2="97" y2="208" stroke="#2a2a3a" strokeWidth="1"/>
-                {/* Flag */}
-                <line x1="85" y1="5" x2="85" y2="42" stroke="#4a4a6a" strokeWidth="1.2"/>
-                <polygon points="85,5 85,22 100,13" fill="#8b1a1a"/>
+                <path d="M73,188 Q73,168 85,168 Q97,168 97,188" fill="#060408" stroke={isCapital ? "#b8962a66" : "#3a3a5a"} strokeWidth="0.8"/>
+                <line x1="79" y1="170" x2="79" y2="225" stroke={isCapital ? "#b8962a44" : "#2a2a3a"} strokeWidth="1"/>
+                <line x1="85" y1="170" x2="85" y2="225" stroke={isCapital ? "#b8962a44" : "#2a2a3a"} strokeWidth="1"/>
+                <line x1="91" y1="170" x2="91" y2="225" stroke={isCapital ? "#b8962a44" : "#2a2a3a"} strokeWidth="1"/>
+                <line x1="73" y1="190" x2="97" y2="190" stroke={isCapital ? "#b8962a44" : "#2a2a3a"} strokeWidth="1"/>
+                <line x1="73" y1="208" x2="97" y2="208" stroke={isCapital ? "#b8962a44" : "#2a2a3a"} strokeWidth="1"/>
+                {/* Flag — gold for capital, red for normal */}
+                <line x1="85" y1="5" x2="85" y2="42" stroke={isCapital ? "#ff8c00" : "#4a4a6a"} strokeWidth="1.2"/>
+                <polygon points="85,5 85,22 100,13" fill={isCapital ? "#ff8c00" : "#8b1a1a"}/>
+                {/* Crown above capital */}
+                {isCapital && <><polygon points="85,0 80,-10 85,-7 90,-10 85,0" fill="#b8962a"/><circle cx="80" cy="-11" r="2" fill="#b8962a"/><circle cx="85" cy="-8" r="2" fill="#ffe066"/><circle cx="90" cy="-11" r="2" fill="#b8962a"/></>}
               </svg>
             )}
             {isCave && !isPlayer && (
@@ -5390,6 +5472,7 @@ const heroUrl = "hero_sprite.png";
     const center = mapCenter || pos;
     const canvas = bigMapCanvasRef.current;
     const ctx = canvas.getContext("2d");
+    ctx._capitalPositions = [];  // Reset each render
     const mapSize = zoom.radius * 2 + 1;
     const size = mapSize * zoom.px;
     canvas.width = size;
@@ -5426,24 +5509,51 @@ const heroUrl = "hero_sprite.png";
           const hasTurnIn = quests.some(q => q.accepted && q.originCity === cities[ck].name && isQuestComplete(q));
           const isVisited = visitedCities.has(cities[ck].name);
           const isDeliveryTarget = quests.some(q => q.accepted && q.questKind === "deliver" && q.targetCityX === tx && q.targetCityY === ty);
-          const cityColor = hasTurnIn ? "#3aaa60" : isDeliveryTarget ? "#ff88ff" : isVisited ? "#4a7ab8" : "#f0c040";
-          const ms = Math.max(3, zoom.px + 1);
-          // Outer glow ring
-          ctx.fillStyle = cityColor + "55";
-          ctx.fillRect(px - 1, py - 1, ms + 2, ms + 2);
-          // Inner dot
-          ctx.fillStyle = cityColor;
-          ctx.fillRect(px, py, ms, ms);
-          // White center pixel for visibility
-          if (ms >= 4) {
-            ctx.fillStyle = "#ffffff99";
-            ctx.fillRect(px + Math.floor(ms/2) - 1, py + Math.floor(ms/2) - 1, 2, 2);
+          const isCapitalDot = !!cities[ck].isCapital;
+          ctx.setLineDash([]);
+
+          if (isCapitalDot) {
+            // Capital: orange filled circle — pulse ring drawn separately in animation loop
+            const capColor = hasTurnIn ? "#3aaa60" : isDeliveryTarget ? "#ff88ff" : "#ff8c00";
+            const r = Math.max(4, zoom.px + 2);
+            const cx2 = px + Math.floor(zoom.px / 2);
+            const cy2 = py + Math.floor(zoom.px / 2);
+            // Store capital positions for animation loop
+            if (!ctx._capitalPositions) ctx._capitalPositions = [];
+            ctx._capitalPositions.push({ cx2, cy2, r, capColor });
+            // Base filled circle
+            ctx.fillStyle = capColor + "55";
+            ctx.beginPath();
+            ctx.arc(cx2, cy2, r + 2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = capColor;
+            ctx.beginPath();
+            ctx.arc(cx2, cy2, r, 0, Math.PI * 2);
+            ctx.fill();
+            // Bright center
+            ctx.fillStyle = "#fff8";
+            ctx.beginPath();
+            ctx.arc(cx2, cy2, Math.max(1, r / 3), 0, Math.PI * 2);
+            ctx.fill();
+          } else {
+            // Normal city
+            const cityColor = hasTurnIn ? "#3aaa60" : isDeliveryTarget ? "#ff88ff" : isVisited ? "#4a7ab8" : "#f0c040";
+            const ms = Math.max(3, zoom.px + 1);
+            ctx.fillStyle = cityColor + "55";
+            ctx.fillRect(px - 1, py - 1, ms + 2, ms + 2);
+            ctx.fillStyle = cityColor;
+            ctx.fillRect(px, py, ms, ms);
+            if (ms >= 4) {
+              ctx.fillStyle = "#ffffff99";
+              ctx.fillRect(px + Math.floor(ms/2) - 1, py + Math.floor(ms/2) - 1, 2, 2);
+            }
+            if (isDeliveryTarget) {
+              ctx.strokeStyle = "#ff88ff";
+              ctx.lineWidth = 1.5;
+              ctx.strokeRect(px - 2, py - 2, ms + 4, ms + 4);
+            }
           }
-          if (isDeliveryTarget) {
-            ctx.strokeStyle = "#ff88ff";
-            ctx.lineWidth = 1.5;
-            ctx.strokeRect(px - 2, py - 2, ms + 4, ms + 4);
-          }
+          ctx.setLineDash([4, 4]);
         }
 
         if (caves[ck]) {
@@ -5645,6 +5755,38 @@ const heroUrl = "hero_sprite.png";
 
   }, [worldMapOpen, mapZoom, mapCenter, pos, worldSeed, cities, caves, defeatedBosses, quests, isQuestComplete]);
 
+  // Pulsing ring animation for capital cities
+  useEffect(() => {
+    if (!worldMapOpen) { if (mapAnimRef.current) cancelAnimationFrame(mapAnimRef.current); return; }
+    const canvas = bigMapCanvasRef.current;
+    if (!canvas) return;
+    let running = true;
+    const animate = () => {
+      if (!running || !canvas) return;
+      const ctx = canvas.getContext("2d");
+      const positions = ctx._capitalPositions;
+      if (positions && positions.length > 0) {
+        const t = (Date.now() % 1600) / 1600; // 0..1 cycle
+        const pulseR = t * 10.5; // expanding ring radius (25% smaller)
+        const alpha = Math.max(0, 1 - t); // fading out
+        for (const { cx2, cy2, capColor } of positions) {
+          ctx.save();
+          ctx.globalAlpha = alpha * 0.8;
+          ctx.strokeStyle = "#ff8c00";
+          ctx.lineWidth = 2;
+          ctx.setLineDash([]);
+          ctx.beginPath();
+          ctx.arc(cx2, cy2, pulseR, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+      mapAnimRef.current = requestAnimationFrame(animate);
+    };
+    mapAnimRef.current = requestAnimationFrame(animate);
+    return () => { running = false; cancelAnimationFrame(mapAnimRef.current); };
+  }, [worldMapOpen]);
+
   const worldMapOverlay = worldMapOpen && (
     <div style={{
       position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 1100,
@@ -5687,7 +5829,7 @@ const heroUrl = "hero_sprite.png";
                 const dist = dx * dx + dy * dy;
                 if (cities[ck] && dist < closestDist) {
                   closestDist = dist;
-                  closest = { type: "city", name: cities[ck].name };
+                  closest = { type: cities[ck].isCapital ? "capital" : "city", name: cities[ck].name };
                 }
                 if (caves[ck] && dist < closestDist) {
                   closestDist = dist;
@@ -5756,9 +5898,9 @@ const heroUrl = "hero_sprite.png";
         {mapTooltip && (
           <div style={{
             position: "fixed", left: mapTooltip.x + 12, top: mapTooltip.y - 10,
-            background: "rgba(5,4,8,0.97)", border: `1px solid ${mapTooltip.type === "cave" ? "#c04848" : "#b8962a"}`,
+            background: "rgba(5,4,8,0.97)", border: `1px solid ${mapTooltip.type === "cave" ? "#c04848" : mapTooltip.type === "capital" ? "#ff8c00" : "#b8962a"}`,
             borderRadius: 6, padding: "4px 10px", fontSize: 14, fontWeight: 600,
-            color: mapTooltip.type === "cave" ? "#c04848" : "#b8962a",
+            color: mapTooltip.type === "cave" ? "#c04848" : mapTooltip.type === "capital" ? "#ff8c00" : "#b8962a",
             pointerEvents: "none", zIndex: 9999,
             boxShadow: "0 2px 8px #000a",
           }}>
@@ -5768,7 +5910,7 @@ const heroUrl = "hero_sprite.png";
                   <span style={{ display: "flex", alignItems: "center", gap: 5 }}>🕳️ {mapTooltip.name} — Lv.{mapTooltip.level}</span>
                 </span>
               : <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                  <span style={{ fontSize: 11, opacity: 0.6, fontWeight: 400 }}>City</span>
+                  <span style={{ fontSize: 11, opacity: 0.6, fontWeight: 400 }}>{mapTooltip.type === "capital" ? "✦ Capital City" : "City"}</span>
                   <span style={{ display: "flex", alignItems: "center", gap: 5 }}><CastleSVG size={16} />{mapTooltip.name}</span>
                 </span>}
           </div>
@@ -5776,6 +5918,7 @@ const heroUrl = "hero_sprite.png";
         <div style={{ display: "flex", gap: 16, justifyContent: "center", marginTop: 10, fontSize: 15, opacity: 0.7, flexWrap: "wrap" }}>
           <span>🔴 You</span>
           <span style={{ color: "#b8962a" }}>■ City</span>
+          <span style={{ color: "#ff8c00", fontWeight: 700 }}>◉ Capital</span>
           <span style={{ color: "#3aaa60" }}>■ Quest turn-in</span>
           <span style={{ color: "#ff88ff" }}>■ Delivery target</span>
           <span>📍 {pos.x}, {pos.y}</span>
@@ -5785,18 +5928,45 @@ const heroUrl = "hero_sprite.png";
         {fastTravelMode && (() => {
           const visitedList = Object.values(cities)
             .filter(c => visitedCities.has(c.name) && c.name !== currentCity?.name)
-            .sort((a, b) => a.name.localeCompare(b.name));
+            .filter((c, idx, arr) => arr.findIndex(o => o.name === c.name) === idx);
+
+          // Group by region
+          const regionGroups = {};
+          for (const c of visitedList) {
+            const r = getChunkTier(c.x, c.y);
+            const rId = r ? r.id : 0;
+            if (!regionGroups[rId]) regionGroups[rId] = { region: r, cities: [] };
+            regionGroups[rId].cities.push(c);
+          }
+          // Sort groups by levelRange min (dynamic zones last)
+          const sortedGroups = Object.values(regionGroups).sort((a, b) => {
+            const aMin = a.region?.levelRange?.[0] ?? 999;
+            const bMin = b.region?.levelRange?.[0] ?? 999;
+            return aMin - bMin;
+          });
+          // Sort cities within each group alphabetically
+          for (const g of sortedGroups) g.cities.sort((a, b) => a.name.localeCompare(b.name));
+
           return (
             <div style={{ marginTop: 14, borderTop: "1px solid #b8962a33", paddingTop: 12 }}>
               <div style={{ fontSize: 13, color: "#4a7ab8", fontWeight: 600, marginBottom: 8 }}>
                 Visited Cities — click to travel
               </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 160, overflowY: "auto" }}>
-                {visitedList.map(c => (
-                  <button key={c.name} onClick={() => setFastTravelConfirm({ name: c.name, x: c.x, y: c.y })}
-                    style={{ ...S.btn, padding: "4px 10px", fontSize: 13, display: "flex", alignItems: "center", gap: 5, borderColor: "#4a7ab855", color: "#4a7ab8" }}>
-                    <CastleSVG size={13} />{c.name}
-                  </button>
+              <div style={{ maxHeight: 220, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
+                {sortedGroups.map(g => (
+                  <div key={g.region?.id ?? 0}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#b8962a", marginBottom: 4, opacity: 0.8 }}>
+                      {g.region?.name ?? "Unknown"} {g.region?.isDynamic ? "• Dynamic" : g.region?.levelRange ? `• Lv ${g.region.levelRange[0]}–${g.region.levelRange[1]}` : ""}
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                      {g.cities.map(c => (
+                        <button key={`${c.x},${c.y}`} onClick={() => setFastTravelConfirm({ name: c.name, x: c.x, y: c.y })}
+                          style={{ ...S.btn, padding: "4px 10px", fontSize: 13, display: "flex", alignItems: "center", gap: 5, ...(c.isCapital ? { borderColor: "#b8962a", color: "#b8962a", fontWeight: 700 } : { borderColor: "#4a7ab855", color: "#4a7ab8" }) }}>
+                          <CastleSVG size={13} />{c.isCapital ? `✦ ${c.name}` : c.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 ))}
                 {visitedList.length === 0 && <span style={{ fontSize: 13, opacity: 0.4 }}>No other cities visited yet.</span>}
               </div>
@@ -5827,7 +5997,15 @@ const heroUrl = "hero_sprite.png";
             <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
               <button style={{ ...S.btn, ...S.btnSuccess, padding: "8px 24px", fontSize: 16 }} onClick={() => {
                 setPos({ x: fastTravelConfirm.x, y: fastTravelConfirm.y });
-                setCurrentCity(Object.values(cities).find(c => c.name === fastTravelConfirm.name) || null);
+                const ftDiff = getDifficulty(fastTravelConfirm.x, fastTravelConfirm.y, level);
+                const ftCity = cities[`${fastTravelConfirm.x},${fastTravelConfirm.y}`] || {
+                  name: fastTravelConfirm.name,
+                  x: fastTravelConfirm.x,
+                  y: fastTravelConfirm.y,
+                  difficulty: ftDiff.tier,
+                  itemLevel: ftDiff.itemLevel,
+                };
+                setCurrentCity(ftCity);
                 setScreen("city");
                 addLog(`🏰 Fast Traveled to ${fastTravelConfirm.name}`);
                 setFastTravelConfirm(null);
@@ -6281,6 +6459,7 @@ const heroUrl = "hero_sprite.png";
   }
 
   if (screen === "city" && currentCity) {
+    const isCapitalCity = !!currentCity.isCapital;
     return (
       <div style={S.app}>
         {questLogOverlay}
@@ -6293,9 +6472,18 @@ const heroUrl = "hero_sprite.png";
 
           {/* ✅ Scrollable content area */}
           <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
-            <div style={{ ...S.panel, textAlign: "center" }}>
-              <h2 style={{ ...S.gold, margin: "0 0 4px 0", fontSize: 26, display: "flex", alignItems: "center", gap: 8 }}><CastleSVG size={112} /> {currentCity.name}</h2>
-              <span style={S.badge(TIER_COLORS[currentCity.difficulty] || "#b8962a")}>{currentCity.difficulty}</span>
+            <div style={{ ...S.panel, textAlign: "center", ...(isCapitalCity ? { border: "1px solid #ff8c0066", boxShadow: "0 0 24px #ff8c0022" } : {}) }}>
+              {isCapitalCity && <div style={{ fontSize: 11, letterSpacing: 3, color: "#b8962a", opacity: 0.7, marginBottom: 6, textTransform: "uppercase" }}>✦ Capital City ✦</div>}
+              <h2 style={{ ...S.gold, margin: "0 0 4px 0", fontSize: isCapitalCity ? 32 : 26, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, ...(isCapitalCity ? { textShadow: "0 0 20px #b8962a66" } : {}) }}>
+                <CastleSVG size={112} /> {currentCity.name}
+              </h2>
+              {isCapitalCity && <div style={{ width: 120, height: 1, background: "linear-gradient(90deg, transparent, #b8962a, transparent)", margin: "6px auto 8px" }} />}
+              {(() => {
+                const cityRegion = getChunkTier(currentCity.x, currentCity.y);
+                const regionName = cityRegion?.name || "Unknown Region";
+                const levelText = cityRegion?.isDynamic ? "Dynamic" : cityRegion?.levelRange ? `Lv ${cityRegion.levelRange[0]}–${cityRegion.levelRange[1]}` : "";
+                return <span style={S.badge("#b8962a")}>{regionName}{levelText ? ` • ${levelText}` : ""}</span>;
+              })()}
             </div>
 
             {activeQuests.length > 0 && (
@@ -6319,9 +6507,9 @@ const heroUrl = "hero_sprite.png";
             )}
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 8, padding: "0 12px" }}>
-              <button onClick={() => setScreen("merchant")} style={{ ...S.btn, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}><MerchantSVG size={36}/> Merchant</button>
-              <button onClick={() => setScreen("blacksmith")} style={{ ...S.btn, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}><BlacksmithSVG size={36}/> Blacksmith</button>
-              <button onClick={() => setScreen("inn")} style={{ ...S.btn, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}><InnSVG size={36}/> Inn</button>
+              <button onClick={() => setScreen("merchant")} style={{ ...S.btn, display:"flex", alignItems:"center", justifyContent:"center", gap:6, ...(isCapitalCity ? { borderColor: "#b8962a88", color: "#b8962a" } : {}) }}><MerchantSVG size={36}/> {isCapitalCity ? "Guild of Traders" : "Merchant"}</button>
+              <button onClick={() => setScreen("blacksmith")} style={{ ...S.btn, display:"flex", alignItems:"center", justifyContent:"center", gap:6, ...(isCapitalCity ? { borderColor: "#b8962a88", color: "#b8962a" } : {}) }}><BlacksmithSVG size={36}/> {isCapitalCity ? "Master Blacksmith" : "Blacksmith"}</button>
+              <button onClick={() => setScreen("inn")} style={{ ...S.btn, display:"flex", alignItems:"center", justifyContent:"center", gap:6, ...(isCapitalCity ? { borderColor: "#b8962a88", color: "#b8962a" } : {}) }}><InnSVG size={36}/> {isCapitalCity ? "Royal Lodge" : "Inn"}</button>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 20, padding: "0 12px" }}>
               <button onClick={() => setScreen("questgiver")} style={{ ...S.btn, display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}><WeaponSVG size={36}/> Questgiver</button>
@@ -6350,10 +6538,12 @@ const heroUrl = "hero_sprite.png";
   }
 
   if (screen === "inn" && currentCity) {
+    const isCapitalInn = !!currentCity.isCapital;
     const hpMissing = stats.maxHp - hp;
     const manaMissing = stats.maxMana - mana;
     const paidTicksNeeded = innHealPerTick > 0 ? Math.ceil(hpMissing / innHealPerTick) : 0;
     const totalCostEstimate = paidTicksNeeded * innCostPerTick;
+    const alreadyFull = hp >= stats.maxHp && mana >= stats.maxMana;
     return (
       <div style={S.app}>
         {questLogOverlay}
@@ -6363,37 +6553,55 @@ const heroUrl = "hero_sprite.png";
         {worldMapOverlay}
         <div style={{ maxWidth: 560, width: "100%" }}>
           <PlayerHeader {...{ playerName, level, xp, xpToLevel, gold, hp, mana, stats }} />
-          <div style={S.panel}>
-            <h2 style={{ ...S.gold, margin: "0 0 14px 0", fontSize: 28, display:"flex", alignItems:"center", gap:10 }}><InnSVG size={64}/> Inn</h2>
-            <div style={{ fontSize: 16, opacity: 0.6, marginBottom: 14 }}>
-              Welcome, weary traveler. Rest and recover your strength.
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <div style={{ background: "#ffffff06", borderRadius: 8, padding: 14, border: "1px solid #b8962a22" }}>
-                <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 6, display:"flex", alignItems:"center", gap:6 }}><CampfireSVG size={28}/> Campfire</div>
-                <div style={{ fontSize: 14, opacity: 0.6, marginBottom: 4 }}>Rest on the floor for free</div>
-                <div style={{ fontSize: 14, color: "#3aaa60", marginBottom: 8 }}>+1 HP/s • +1 Mana/s</div>
-                <button
-                  onClick={() => { setResting(true); setRestType("free"); setScreen("resting"); }}
-                  style={{ ...S.btn, width: "100%", ...(hp >= stats.maxHp ? S.btnDisabled : {}) }}
-                  disabled={hp >= stats.maxHp}
-                >Rest (Free)</button>
-              </div>
-
-              <div style={{ background: "#b8962a08", borderRadius: 8, padding: 14, border: "1px solid #b8962a33" }}>
-                <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 6, color: "#b8962a", display:"flex", alignItems:"center", gap:6 }}><BedSVG size={28}/> Warm Bed</div>
-                <div style={{ fontSize: 14, opacity: 0.6, marginBottom: 4 }}>A comfortable room with meals</div>
-                <div style={{ fontSize: 14, color: "#3aaa60", marginBottom: 2 }}>+{innHealPerTick} HP/s ({Math.round(innRate * 100)}% max HP)</div>
-                <div style={{ fontSize: 14, color: "#b8962a", marginBottom: 2 }}>{innCostPerTick}g per second</div>
-                {hpMissing > 0 && <div style={{ fontSize: 13, opacity: 0.5, marginBottom: 6 }}>≈ {totalCostEstimate}g for full heal</div>}
-                <button
-                  onClick={() => { if (gold >= innCostPerTick) { setResting(true); setRestType("paid"); setScreen("resting"); } }}
-                  style={{ ...S.btn, width: "100%", ...(gold < innCostPerTick || hp >= stats.maxHp ? S.btnDisabled : {}) }}
-                  disabled={gold < innCostPerTick || hp >= stats.maxHp}
-                >Rest ({innCostPerTick}g/s)</button>
-              </div>
-            </div>
+          <div style={{ ...S.panel, ...(isCapitalInn ? { border: "1px solid #b8962a66", boxShadow: "0 0 24px #b8962a22" } : {}) }}>
+            <h2 style={{ ...S.gold, margin: "0 0 14px 0", fontSize: 28, display:"flex", alignItems:"center", gap:10 }}><InnSVG size={64}/> {isCapitalInn ? "Royal Lodge" : "Inn"}</h2>
+            {isCapitalInn ? (
+              <>
+                <div style={{ fontSize: 15, opacity: 0.7, marginBottom: 16, color: "#b8962a" }}>
+                  The finest establishment in the realm. All guests are treated as royalty.
+                </div>
+                <div style={{ background: "#b8962a11", borderRadius: 8, padding: 16, border: "1px solid #b8962a44", textAlign: "center" }}>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: "#b8962a", marginBottom: 6 }}>✦ Royal Suite ✦</div>
+                  <div style={{ fontSize: 14, opacity: 0.7, marginBottom: 4 }}>Full HP & Mana restoration</div>
+                  <div style={{ fontSize: 20, color: "#3aaa60", fontWeight: 700, marginBottom: 12 }}>Free of charge</div>
+                  <button
+                    onClick={() => { setHp(stats.maxHp); setMana(stats.maxMana); addLog("✦ Royal Lodge: Fully restored HP and Mana!"); }}
+                    style={{ ...S.btn, ...S.btnSuccess, width: "100%", fontSize: 18, padding: 12, ...(alreadyFull ? S.btnDisabled : { borderColor: "#b8962a", color: "#b8962a" }) }}
+                    disabled={alreadyFull}
+                  >{alreadyFull ? "Already at full health" : "✦ Rest (Free)"}</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ fontSize: 16, opacity: 0.6, marginBottom: 14 }}>
+                  Welcome, weary traveler. Rest and recover your strength.
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <div style={{ background: "#ffffff06", borderRadius: 8, padding: 14, border: "1px solid #b8962a22" }}>
+                    <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 6, display:"flex", alignItems:"center", gap:6 }}><CampfireSVG size={28}/> Campfire</div>
+                    <div style={{ fontSize: 14, opacity: 0.6, marginBottom: 4 }}>Rest on the floor for free</div>
+                    <div style={{ fontSize: 14, color: "#3aaa60", marginBottom: 8 }}>+1 HP/s • +1 Mana/s</div>
+                    <button
+                      onClick={() => { setResting(true); setRestType("free"); setScreen("resting"); }}
+                      style={{ ...S.btn, width: "100%", ...(hp >= stats.maxHp ? S.btnDisabled : {}) }}
+                      disabled={hp >= stats.maxHp}
+                    >Rest (Free)</button>
+                  </div>
+                  <div style={{ background: "#b8962a08", borderRadius: 8, padding: 14, border: "1px solid #b8962a33" }}>
+                    <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 6, color: "#b8962a", display:"flex", alignItems:"center", gap:6 }}><BedSVG size={28}/> Warm Bed</div>
+                    <div style={{ fontSize: 14, opacity: 0.6, marginBottom: 4 }}>A comfortable room with meals</div>
+                    <div style={{ fontSize: 14, color: "#3aaa60", marginBottom: 2 }}>+{innHealPerTick} HP/s ({Math.round(innRate * 100)}% max HP)</div>
+                    <div style={{ fontSize: 14, color: "#b8962a", marginBottom: 2 }}>{innCostPerTick}g per second</div>
+                    {hpMissing > 0 && <div style={{ fontSize: 13, opacity: 0.5, marginBottom: 6 }}>≈ {totalCostEstimate}g for full heal</div>}
+                    <button
+                      onClick={() => { if (gold >= innCostPerTick) { setResting(true); setRestType("paid"); setScreen("resting"); } }}
+                      style={{ ...S.btn, width: "100%", ...(gold < innCostPerTick || hp >= stats.maxHp ? S.btnDisabled : {}) }}
+                      disabled={gold < innCostPerTick || hp >= stats.maxHp}
+                    >Rest ({innCostPerTick}g/s)</button>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
           <button onClick={() => setScreen("city")} style={{ ...S.btn, width: "100%" }}>← Back</button>
         </div>
@@ -6430,7 +6638,16 @@ const heroUrl = "hero_sprite.png";
   }
 
   if (screen === "merchant" && currentCity) {
-    const items = generateMerchantPotions(level);
+    const isCapitalMerchant = !!currentCity.isCapital;
+    const basePotions = generateMerchantPotions(level);
+    const capitalPotions = isCapitalMerchant ? (() => {
+      const baseCost = basePotions[0]?.cost || 5;
+      return [
+        { name: "Grand Healing Potion", cost: Math.round(baseCost * 1.5), type: "consumable", effect: "heal", healPercent: 0.75 },
+        { name: "Divine Healing Potion", cost: Math.round(baseCost * 2.0), type: "consumable", effect: "heal", healPercent: 1.0 },
+      ];
+    })() : [];
+    const items = [...basePotions, ...capitalPotions];
     return (
       <div style={S.app}>
         {questLogOverlay}
@@ -6440,8 +6657,8 @@ const heroUrl = "hero_sprite.png";
         {worldMapOverlay}
         <div style={{ maxWidth: 560, width: "100%" }}>
           <PlayerHeader {...{ playerName, level, xp, xpToLevel, gold, hp, mana, stats }} />
-          <div style={S.panel}>
-            <h2 style={{ ...S.gold, margin: "0 0 12px 0", fontSize: 28, display:"flex", alignItems:"center", gap:10 }}><MerchantSVG size={64}/> Merchant</h2>
+          <div style={{ ...S.panel, ...(isCapitalMerchant ? { border: "1px solid #b8962a66", boxShadow: "0 0 24px #b8962a22" } : {}) }}>
+            <h2 style={{ ...S.gold, margin: "0 0 12px 0", fontSize: 28, display:"flex", alignItems:"center", gap:10 }}><MerchantSVG size={64}/> {isCapitalMerchant ? "Guild of Traders" : "Merchant"}</h2>
             {items.map((item, i) => {
               const owned = inventory.filter(inv => inv.name === item.name).length;
               return (
@@ -6464,23 +6681,27 @@ const heroUrl = "hero_sprite.png";
   }
 
   if (screen === "blacksmith" && currentCity) {
-    // ✅ NEW: Determine item level based on chunk (like shops now)
+    const isCapitalSmith = !!currentCity.isCapital;
     const chunk = getChunkTier(currentCity.x, currentCity.y);
     let itemLevelMin = 1;
     let itemLevelMax = 1;
     
     if (chunk && chunk.levelRange) {
-      // ✅ NEW: Items variieren zwischen den ersten 3 Levels des Chunks
-      itemLevelMin = chunk.levelRange[0];
-      itemLevelMax = Math.min(itemLevelMin + 2, chunk.levelRange[1]);
+      if (isCapitalSmith) {
+        // Master Blacksmith: all items at max level of region
+        itemLevelMin = chunk.levelRange[1];
+        itemLevelMax = chunk.levelRange[1];
+      } else {
+        itemLevelMin = chunk.levelRange[0];
+        itemLevelMax = Math.min(itemLevelMin + 2, chunk.levelRange[1]);
+      }
     } else if (chunk && chunk.isDynamic) {
-      // For dynamic chunks, use player level
       itemLevelMin = Math.max(1, Math.min(50, level));
-      itemLevelMax = itemLevelMin;
+      itemLevelMax = isCapitalSmith ? Math.min(itemLevelMin + 5, 50) : itemLevelMin;
+      if (isCapitalSmith) itemLevelMin = itemLevelMax;
     }
     
-    // ✅ NEW: Pass itemLevel range instead of single itemLevel
-    const shopItems = generateShopItems(currentCity.name, itemLevelMin, itemLevelMax, worldSeed);
+    const shopItems = generateShopItems(currentCity.name, itemLevelMin, itemLevelMax, worldSeed + (isCapitalSmith ? 99991 : 0), isCapitalSmith ? itemLevelMax : null);
     const visibleItems = shopItems.filter(item => !item.unique || !boughtUniqueIds.has(item.uid));
     return (
       <div style={S.app}>
@@ -6491,8 +6712,8 @@ const heroUrl = "hero_sprite.png";
         {worldMapOverlay}
         <div style={{ maxWidth: 560, width: "100%" }}>
           <PlayerHeader {...{ playerName, level, xp, xpToLevel, gold, hp, mana, stats }} />
-          <div style={S.panel}>
-            <h2 style={{ ...S.gold, margin: "0 0 12px 0", fontSize: 28, display:"flex", alignItems:"center", gap:10 }}><BlacksmithSVG size={64}/> Blacksmith</h2>
+          <div style={{ ...S.panel, ...(isCapitalSmith ? { border: "1px solid #b8962a66", boxShadow: "0 0 24px #b8962a22" } : {}) }}>
+            <h2 style={{ ...S.gold, margin: "0 0 12px 0", fontSize: 28, display:"flex", alignItems:"center", gap:10 }}><BlacksmithSVG size={64}/> {isCapitalSmith ? "Master Blacksmith" : "Blacksmith"}</h2>
             {visibleItems.map((item, i) => {
               const statEntries = item.bonusStats ? Object.entries(item.bonusStats) : [];
               return (
@@ -6530,19 +6751,21 @@ const heroUrl = "hero_sprite.png";
   }
 
   if (screen === "questgiver" && currentCity) {
-    const cityQuests = getCityQuests(currentCity.name, currentCity.difficulty);
+    const cityQuests = getCityQuests(currentCity.name, currentCity.difficulty, currentCity);
     const cityChunkX = Math.floor(currentCity.x / CHUNK_SIZE);
     const cityChunkY = Math.floor(currentCity.y / CHUNK_SIZE);
+    const cityRegion = getChunkTier(currentCity.x, currentCity.y);
 
     const turnInableQuests = quests.filter(q => q.accepted && q.type === "questgiver" && isQuestComplete(q) && (
       (q.questKind === "deliver" && q.targetCity === currentCity.name) ||
-      (q.questKind === "chunkBossHunt" && q.targetChunkX === cityChunkX && q.targetChunkY === cityChunkY) ||
+      (q.questKind === "chunkBossHunt" && String(q.targetRegionId) === String(cityRegion?.id)) ||
       (q.questKind !== "deliver" && q.questKind !== "chunkBossHunt" && q.originCity === currentCity.name)
     ));
     // Filter out quests already taken (accepted or turned in)
-    const availableQuests = cityQuests.filter(q => !completedQuestIds.has(q.id) && !quests.some(eq => eq.id === q.id));
+    const hasActiveBossHunt = quests.some(q => q.accepted && q.questKind === "chunkBossHunt");
+    const availableQuests = cityQuests.filter(q => !completedQuestIds.has(q.id) && !quests.some(eq => eq.id === q.id) && !(q.questKind === "chunkBossHunt" && hasActiveBossHunt));
     const pendingQuests = quests.filter(q => q.accepted && q.type === "questgiver" && !isQuestComplete(q) && (
-      (q.questKind === "chunkBossHunt" && q.targetChunkX === cityChunkX && q.targetChunkY === cityChunkY) ||
+      (q.questKind === "chunkBossHunt" && String(q.targetRegionId) === String(cityRegion?.id)) ||
       (q.questKind !== "chunkBossHunt" && q.originCity === currentCity.name)
     ));
     const allDone = availableQuests.length === 0 && turnInableQuests.length === 0 && pendingQuests.length === 0;
@@ -6891,9 +7114,7 @@ const heroUrl = "hero_sprite.png";
               {caveConfirm.biome} • {caveConfirm.difficulty} difficulty
             </div>
             
-            {/* ✅ Quest-Warnung: Prüfe ob Quest für diese Höhle existiert */}
-            <CaveQuestBanner quests={quests} caveConfirm={caveConfirm} getQuestProgress={getQuestProgress} />
-            
+
             <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
               <button onClick={() => {
                 const cave = caveConfirm;
