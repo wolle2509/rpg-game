@@ -113,16 +113,42 @@ for (const c of CAPITAL_CITIES) CAPITAL_CITY_MAP[`${c.x},${c.y}`] = { ...c, isCa
 // TOURNAMENT SYSTEM
 // ============================================================
 
-const TOURNAMENT_KNIGHT_NAMES = [
-  "Aldric","Beron","Caldur","Draven","Edwyn","Farok","Gareth","Halvorn","Idris","Jorath",
-  "Keldrin","Lorcan","Mordecai","Navar","Oswin","Percyn","Quillon","Rhydan","Solvarn","Thadric",
-  "Ulvyn","Varak","Wulfric","Xandrel","Yoran","Zethric","Brennan","Corvyn","Duskrel","Emroth"
+// Name → fixed rarity index
+const TOURNAMENT_NPC_ROSTER = [
+  // Squires (Normal, rarityIdx 0) — 15 names
+  { name: "Alton",    rarityIdx: 0 }, { name: "Bevan",   rarityIdx: 0 },
+  { name: "Cody",     rarityIdx: 0 }, { name: "Daren",   rarityIdx: 0 },
+  { name: "Edric",    rarityIdx: 0 }, { name: "Finn",    rarityIdx: 0 },
+  { name: "Garron",   rarityIdx: 0 }, { name: "Hadwin",  rarityIdx: 0 },
+  { name: "Ivor",     rarityIdx: 0 }, { name: "Jasper",  rarityIdx: 0 },
+  { name: "Kelton",   rarityIdx: 0 }, { name: "Loren",   rarityIdx: 0 },
+  { name: "Macon",    rarityIdx: 0 }, { name: "Niles",   rarityIdx: 0 },
+  { name: "Osric",    rarityIdx: 0 },
+  // Uncommon Knights (rarityIdx 1) — 15 names
+  { name: "Aldric",   rarityIdx: 1 }, { name: "Beron",   rarityIdx: 1 },
+  { name: "Caldur",   rarityIdx: 1 }, { name: "Draven",  rarityIdx: 1 },
+  { name: "Edwyn",    rarityIdx: 1 }, { name: "Farok",   rarityIdx: 1 },
+  { name: "Gareth",   rarityIdx: 1 }, { name: "Halvorn", rarityIdx: 1 },
+  { name: "Idris",    rarityIdx: 1 }, { name: "Jorath",  rarityIdx: 1 },
+  { name: "Keldrin",  rarityIdx: 1 }, { name: "Lorcan",  rarityIdx: 1 },
+  { name: "Mordecai", rarityIdx: 1 }, { name: "Navar",   rarityIdx: 1 },
+  { name: "Oswin",    rarityIdx: 1 },
+  // Rare Knights (rarityIdx 2) — 8 names
+  { name: "Percyn",   rarityIdx: 2 }, { name: "Quillon", rarityIdx: 2 },
+  { name: "Rhydan",   rarityIdx: 2 }, { name: "Solvarn", rarityIdx: 2 },
+  { name: "Thadric",  rarityIdx: 2 }, { name: "Ulvyn",   rarityIdx: 2 },
+  { name: "Brennan",  rarityIdx: 2 }, { name: "Corvyn",  rarityIdx: 2 },
+  // Epic Knights (rarityIdx 3) — 4 names
+  { name: "Wulfric",  rarityIdx: 3 }, { name: "Xandrel", rarityIdx: 3 },
+  { name: "Yoran",    rarityIdx: 3 }, { name: "Zethric", rarityIdx: 3 },
+  // Legendary Knights (rarityIdx 4) — 3 names
+  { name: "Varak",    rarityIdx: 4 }, { name: "Duskrel", rarityIdx: 4 },
+  { name: "Emroth",   rarityIdx: 4 },
 ];
-const TOURNAMENT_SQUIRE_NAMES = [
-  "Alton","Bevan","Cody","Daren","Edric","Finn","Garron","Hadwin","Ivor","Jasper",
-  "Kelton","Loren","Macon","Niles","Osric","Pell","Quinn","Renly","Seryn","Tomas",
-  "Uther","Vann","Wren","Xever","Yosef","Zolan","Arwin","Brynn","Caius","Davin"
-];
+// Quick lookup by name
+const TOURNAMENT_NPC_BY_NAME = Object.fromEntries(TOURNAMENT_NPC_ROSTER.map(n => [n.name, n]));
+// Pools by rarityIdx for bracket generation
+const TOURNAMENT_NAMES_BY_RARITY = [0,1,2,3,4].map(r => TOURNAMENT_NPC_ROSTER.filter(n => n.rarityIdx === r).map(n => n.name));
 
 const TOURNAMENT_RARITIES = [
   { name: "Normal",    color: "#aaaaaa", statMult: 0.80, label: "Squire"           },
@@ -136,8 +162,7 @@ function generateTournamentNPC(rarityIdx, playerStats, regionMaxLevel, seed) {
   const rng = seededRandom(seed);
   const rarity = TOURNAMENT_RARITIES[rarityIdx];
   const mult = rarity.statMult;
-  const isSquire = rarityIdx === 0;
-  const namePool = isSquire ? TOURNAMENT_SQUIRE_NAMES : TOURNAMENT_KNIGHT_NAMES;
+  const namePool = TOURNAMENT_NAMES_BY_RARITY[rarityIdx] || TOURNAMENT_NAMES_BY_RARITY[0];
   const name = namePool[Math.floor(rng() * namePool.length)];
   return {
     name,
@@ -311,51 +336,74 @@ const ENEMIES_FALLBACK = {
 // SPRITESHEET DATA
 // ============================================================
 
-const SPRITE_SCALE = 2000 / 2340; // actual image vs JSON coords
-const SPRITE_CELL = Math.round(260 * SPRITE_SCALE);
-const SPRITE_TILE = Math.round(256 * SPRITE_SCALE);
-const SPRITE_PAD = Math.round(2 * SPRITE_SCALE);
-const SPRITE_COLS = 9;
 
-// Sprite key → pixel position in spritesheet { x, y, w, h }
-const SPRITE_MAP = {
-  "ember_drake": { x: 2, y: 2, w: 256, h: 256 },
-  "man_eater": { x: 262, y: 2, w: 256, h: 256 },
-  "orc_warchief": { x: 522, y: 2, w: 256, h: 256 },
-  "dusk_harpy": { x: 782, y: 2, w: 256, h: 256 },
-  "imp_cutlass": { x: 1042, y: 2, w: 256, h: 256 },
-  "pyre_tortoise": { x: 1302, y: 2, w: 256, h: 256 },
-  "venom_snail": { x: 1562, y: 2, w: 256, h: 256 },
-  "ghastly": { x: 1822, y: 2, w: 256, h: 256 },
-  "moth": { x: 2082, y: 2, w: 256, h: 256 },
-  "bog_frog": { x: 2, y: 262, w: 256, h: 256 },
-  "flame_knight": { x: 262, y: 262, w: 256, h: 256 },
-  "bramble_boar": { x: 522, y: 262, w: 256, h: 256 },
-  "brutal_ogre": { x: 782, y: 262, w: 256, h: 256 },
-  "lava_scorpion": { x: 1042, y: 262, w: 256, h: 256 },
-  "goblin_warlock": { x: 1302, y: 262, w: 256, h: 256 },
-  "scarab_tank": { x: 1562, y: 262, w: 256, h: 256 },
-  "ice_ogre": { x: 1822, y: 262, w: 256, h: 256 },
-  "cursed_mummy": { x: 2082, y: 262, w: 256, h: 256 },
-  "basilisk": { x: 2, y: 522, w: 256, h: 256 },
-  "rock_golem": { x: 262, y: 522, w: 256, h: 256 },
-  "ashen_roc": { x: 522, y: 522, w: 256, h: 256 },
-  "sea_serpent": { x: 782, y: 522, w: 256, h: 256 },
-  "mimic_chest": { x: 1042, y: 522, w: 256, h: 256 },
-  "eye_abomination": { x: 1302, y: 522, w: 256, h: 256 },
-  "moss_bear": { x: 1562, y: 522, w: 256, h: 256 },
-  "bog_treant": { x: 1822, y: 522, w: 256, h: 256 },
-  "toadstool_shaman": { x: 2082, y: 522, w: 256, h: 256 },
-  "vine_serpent": { x: 2, y: 782, w: 256, h: 256 },
-  "moss_beetle": { x: 262, y: 782, w: 256, h: 256 },
-  "forest_dryad": { x: 522, y: 782, w: 256, h: 256 },
-  "leaf_goblin": { x: 782, y: 782, w: 256, h: 256 },
-  "twin_flytraps": { x: 1042, y: 782, w: 256, h: 256 },
-  "mushroom_squirrels": { x: 1302, y: 782, w: 256, h: 256 },
-  "slime_snail_forest": { x: 1562, y: 782, w: 256, h: 256 },
-  "twig_trickster": { x: 1822, y: 782, w: 256, h: 256 },
-  "wasp_scout": { x: 2082, y: 782, w: 256, h: 256 },
+// ============================================================
+// INDIVIDUAL PNG SPRITE MAP
+// Each entity has its own PNG file in /public/sprites/
+// ============================================================
+const ENTITY_PNG_MAP = {
+  // Monsters
+  "bramble_boar":      "Bramble_Boar.png",
+  "leaf_goblin":       "Leaf_Goblin.png",
+  "wasp_scout":        "Wasp_Scout.png",
+  "dusk_harpy":        "Dusk_Harpy.png",
+  "moss_beetle":       "Moss_Beetle.png",
+  "slime_snail_forest":"Slime_Snail.png",
+  "slime_snail":       "Slime_Snail.png",
+  "bog_treant":        "Bog_Treant.png",
+  "forest_dryad":      "Forest_Dryad.png",
+  "mushroom_squirrels":"Mushroom_Squirrels.png",
+  "orc_warchief":      "Orc_Warchief.png",
+  "twin_flytraps":     "Twin_Flytraps.png",
+  "man_eater":         "Man_Eater.png",
+  "toadstool_shaman":  "Toadstool_Shaman.png",
+  "venom_snail":       "Venom_Snail.png",
+  "bog_frog":          "Bog_Frog.png",
+  "goblin_warlock":    "Goblin_Warlock.png",
+  "rock_golem":        "Rock_Golem.png",
+  "ember_drake":       "Ember_Drake.png",
+  "brutal_ogre":       "Brutal_Ogre.png",
+  "ashen_roc":         "Ashen_Roc.png",
+  "lava_scorpion":     "Lava_Scorpion.png",
+  "cursed_mummy":      "Cursed_Mummy.png",
+  "ghastly":           "Ghastly.png",
+  "scarab_tank":       "Scarab_Tank.png",
+  "moss_bear":         "Moss_Bear.png",
+  "moth":              "Moth.png",
+  "ice_ogre":          "Ice_Ogre.png",
+  "imp_cutlass":       "Imp_Cutlass.png",
+  "pyre_tortoise":     "Pyre_Tortoise.png",
+  "sea_serpent":       "Sea_Serpent.png",
+  "eye_abomination":   "Eye_Abomination.png",
+  // Bosses
+  "basilisk":          "Basilisk.png",
+  "vine_serpent":      "Vine_Serpent.png",
+  "twig_trickster":    "Twig_Trickster.png",
+  "flame_knight":      "Flame_Knight.png",
+  // Squires
+  "alton":   "Alton.png",   "bevan":   "Bevan.png",   "cody":    "Cody.png",
+  "daren":   "Daren.png",   "edric":   "Edric.png",   "finn":    "Finn.png",
+  "garron":  "Garron.png",  "hadwin":  "Hadwin.png",  "ivor":    "Ivor.png",
+  "jasper":  "Jasper.png",  "kelton":  "Kelton.png",  "loren":   "Loren.png",
+  "macon":   "Macon.png",   "niles":   "Niles.png",   "osric":   "Osric.png",
+  // Knights
+  "aldric":   "Aldric.png",  "beron":    "Beron.png",    "caldur":   "Caldur.png",
+  "draven":   "Draven.png",  "edwyn":    "Edwyn.png",    "farok":    "Farok.png",
+  "gareth":   "Gareth.png",  "halvorn":  "Halvorn.png",  "idris":    "Idris.png",
+  "jorath":   "Jorath.png",  "keldrin":  "Keldrin.png",  "lorcan":   "Lorcan.png",
+  "mordecai": "Mordecai.png","navar":    "Navar.png",    "oswin":    "Oswin.png",
+  "percyn":   "Percyn.png",  "quillon":  "Quillon.png",  "rhydan":   "Rhydan.png",
+  "solvarn":  "Solvarn.png", "thadric":  "Thadric.png",  "ulvyn":    "Ulvyn.png",
+  "brennan":  "Brennan.png", "corvyn":   "Corvyn.png",   "wulfric":  "Wulfric.png",
+  "xandrel":  "Xandrel.png", "yoran":    "Yoran.png",    "zethric":  "Zethric.png",
+  "varak":    "Varak.png",   "duskrel":  "Duskrel.png",  "emroth":   "Emroth.png",
 };
+
+function getEntityPng(key) {
+  const file = ENTITY_PNG_MAP[key?.toLowerCase()];
+  return file ? `/sprites/${file}` : null;
+}
+
 
 const BIOME_BOSSES = {
   swamp:     { name: "Basilisk",              sprite: "basilisk" },
@@ -2155,71 +2203,10 @@ function HeroImage({ size = 110, heroUrl }) {
   return <canvas ref={canvasRef} style={{ width: size, height: size }} />;
 }
 
-// Spritesheet loader: loads image, removes black background, caches as canvas
-let _spriteCanvas = null;
-let _spriteLoading = false;
-let _spriteCallbacks = [];
-
-function loadSpritesheet(src, onReady) {
-  if (_spriteCanvas) { onReady(_spriteCanvas); return; }
-  _spriteCallbacks.push(onReady);
-  if (_spriteLoading) return;
-  _spriteLoading = true;
-  const img = new Image();
-  img.crossOrigin = "anonymous";
-  img.onload = () => {
-    const c = document.createElement("canvas");
-    c.width = img.width; c.height = img.height;
-    const ctx = c.getContext("2d");
-    ctx.drawImage(img, 0, 0);
-    // Remove black background → transparent
-    const id = ctx.getImageData(0, 0, c.width, c.height);
-    const d = id.data;
-    for (let i = 0; i < d.length; i += 4) {
-      const brightness = d[i] + d[i+1] + d[i+2];
-      if (brightness < 35) { d[i+3] = 0; }
-      else if (brightness < 70) { d[i+3] = Math.min(255, (brightness - 35) * 7); }
-    }
-    ctx.putImageData(id, 0, 0);
-    _spriteCanvas = c;
-    _spriteCallbacks.forEach(cb => cb(c));
-    _spriteCallbacks = [];
-  };
-  img.onerror = () => { _spriteLoading = false; };
-  img.src = src;
-}
-
 function SpriteImage({ spriteKey, size = 80, spriteSheetUrl }) {
-  const canvasRef = useRef(null);
-  const [loaded, setLoaded] = useState(!!_spriteCanvas);
-
-  const drawSprite = (source) => {
-    if (!canvasRef.current) return;
-    const pos = SPRITE_MAP[spriteKey];
-    if (!pos) return;
-    const { x, y, w, h } = pos;
-    const dpr = window.devicePixelRatio || 1;
-    const px = Math.round(size * dpr);
-    const canvas = canvasRef.current;
-    canvas.width = px;
-    canvas.height = px;
-    const ctx = canvas.getContext("2d");
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
-    ctx.clearRect(0, 0, px, px);
-    ctx.drawImage(source, x, y, w, h, 0, 0, px, px);
-  };
-
-  useEffect(() => {
-    loadSpritesheet(spriteSheetUrl, (sheet) => { setLoaded(true); drawSprite(sheet); });
-  }, [spriteKey, size, spriteSheetUrl]);
-
-  useEffect(() => {
-    if (!loaded || !_spriteCanvas) return;
-    drawSprite(_spriteCanvas);
-  }, [loaded, spriteKey, size]);
-
-  return <canvas ref={canvasRef} style={{ width: size, height: size }} />;
+  const src = getEntityPng(spriteKey);
+  if (!src) return <div style={{ width: size, height: size, display: "flex", alignItems: "center", justifyContent: "center", opacity: 0.3, fontSize: 32 }}>?</div>;
+  return <img src={src} style={{ width: size, height: size, objectFit: "contain", imageRendering: "pixelated" }} alt={spriteKey} />;
 }
 
 function EquipSlot({ slot, item, icon, svgIcon }) {
@@ -3203,47 +3190,7 @@ function Game({ playerData, onMainMenu }) {
   const isLoaded = !playerData.isNew && playerData.worldSeed != null;
   const playerName = playerData.name || playerData.playerName;
   const initialAttrs = playerData.attrs || playerData.attributes;
-// ✅ SPRITE MAP from JSON - Maps sprite keys to grid positions
-const SPRITE_MAP = {
-  "ember_drake": { row: 0, col: 0 },
-  "man_eater": { row: 0, col: 1 },
-  "orc_warchief": { row: 0, col: 2 },
-  "dusk_harpy": { row: 0, col: 3 },
-  "imp_cutlass": { row: 0, col: 4 },
-  "pyre_tortoise": { row: 0, col: 5 },
-  "venom_snail": { row: 0, col: 6 },
-  "ghastly": { row: 0, col: 7 },
-  "moth": { row: 0, col: 8 },
-  "bog_frog": { row: 1, col: 0 },
-  "flame_knight": { row: 1, col: 1 },
-  "bramble_boar": { row: 1, col: 2 },
-  "brutal_ogre": { row: 1, col: 3 },
-  "lava_scorpion": { row: 1, col: 4 },
-  "goblin_warlock": { row: 1, col: 5 },
-  "scarab_tank": { row: 1, col: 6 },
-  "ice_ogre": { row: 1, col: 7 },
-  "cursed_mummy": { row: 1, col: 8 },
-  "basilisk": { row: 2, col: 0 },
-  "rock_golem": { row: 2, col: 1 },
-  "ashen_roc": { row: 2, col: 2 },
-  "sea_serpent": { row: 2, col: 3 },
-  "mimic_chest": { row: 2, col: 4 },
-  "eye_abomination": { row: 2, col: 5 },
-  "moss_bear": { row: 2, col: 6 },
-  "bog_treant": { row: 2, col: 7 },
-  "toadstool_shaman": { row: 2, col: 8 },
-  "vine_serpent": { row: 3, col: 0 },
-  "moss_beetle": { row: 3, col: 1 },
-  "forest_dryad": { row: 3, col: 2 },
-  "leaf_goblin": { row: 3, col: 3 },
-  "twin_flytraps": { row: 3, col: 4 },
-  "mushroom_squirrels": { row: 3, col: 5 },
-  "slime_snail_forest": { row: 3, col: 6 },
-  "twig_trickster": { row: 3, col: 7 },
-  "wasp_scout": { row: 3, col: 8 },
-};
 
-const spriteSheetUrl = "/monster_spritesheet.png";
 const heroUrl = "hero_sprite.png";
 
 
@@ -5116,7 +5063,7 @@ const heroUrl = "hero_sprite.png";
       addFloatingDamage(`+${healAmount}`, playerX, playerY, false, true);
     } else if (item.type === "consumable" && item.effect === "repel") {
       if (screen === "combat") { addLog("Cannot use Stealth Potion in combat!"); return; }
-      setRepelSteps(item.value);
+      setRepelSteps(prev => prev + item.value);
       setInventory(prev => prev.filter((_, i) => i !== idx));
       addLog(`🧪 Used ${item.name} — no encounters for ${item.value} steps!`);
     }
@@ -6379,7 +6326,7 @@ const heroUrl = "hero_sprite.png";
   // ---- SCREENS ----
 
   if (screen === "combat" && enemy) {
-    const spriteKey = enemy.sprite || enemy.bossSprite || "leaf_goblin";
+    const spriteKey = enemy.name?.toLowerCase().replace(/ /g, "_") || enemy.sprite || "leaf_goblin";
     const lastLog = combatLog.length > 0 ? combatLog[combatLog.length - 1] : "";
     const playerHit = lastLog.includes("You deal") || lastLog.includes("CRITICAL");
     const enemyHit = lastLog.includes(`${enemy.name} deals`);
@@ -6536,7 +6483,7 @@ const heroUrl = "hero_sprite.png";
                     boxShadow: enemyHit ? `0 0 20px ${enemy.isBoss ? "#ff8000aa" : "#c04848aa"}` : "0 0 8px #0008",
                     transition: "box-shadow 0.3s", overflow: "hidden",
                   }}>
-                    <SpriteImage spriteKey={spriteKey} size={165} spriteSheetUrl={spriteSheetUrl} />
+                    <SpriteImage spriteKey={spriteKey} size={165} />
                   </div>
                   {/* ✅ NEW: Enemy Name + Status Badge */}
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -7366,20 +7313,28 @@ const heroUrl = "hero_sprite.png";
               {tournament.phase === "between" && (
                 <div style={{ marginBottom: 12 }}>
                   <div style={{ fontSize: 13, opacity: 0.5, marginBottom: 6 }}>Use potions before next fight:</div>
-                  {inventory.filter(i => i.type === "consumable" && i.effect === "heal").length === 0
-                    ? <div style={{ fontSize: 13, opacity: 0.4 }}>No potions in inventory.</div>
-                    : inventory.filter(i => i.type === "consumable" && i.effect === "heal").map((item, idx) => (
-                      <div key={idx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", borderBottom: "1px solid #ffffff11" }}>
-                        <span style={{ fontSize: 14 }}>{item.name} <span style={{ opacity: 0.5 }}>{item.healPercent ? `+${Math.round(item.healPercent*100)}% HP` : `+${item.value} HP`}</span></span>
+                  {(() => {
+                    const potions = inventory.filter(i => i.type === "consumable" && i.effect === "heal");
+                    if (potions.length === 0) return <div style={{ fontSize: 13, opacity: 0.4 }}>No potions in inventory.</div>;
+                    // Stack by name
+                    const stacked = [];
+                    const seen = new Map();
+                    potions.forEach(item => {
+                      if (seen.has(item.name)) { seen.get(item.name).count++; }
+                      else { const e = { item, count: 1 }; seen.set(item.name, e); stacked.push(e); }
+                    });
+                    return stacked.map(({ item, count }) => (
+                      <div key={item.name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", borderBottom: "1px solid #ffffff11" }}>
+                        <span style={{ fontSize: 14 }}>{item.name}{count > 1 ? <span style={{ color: "#b8962a", marginLeft: 5 }}>×{count}</span> : ""} <span style={{ opacity: 0.5 }}>{item.healPercent ? `+${Math.round(item.healPercent*100)}% HP` : `+${item.value} HP`}</span></span>
                         <button onClick={() => {
                           const healAmt = item.healPercent ? Math.ceil(stats.maxHp * item.healPercent) : item.value;
                           setHp(prev => Math.min(prev + healAmt, stats.maxHp));
-                          setInventory(prev => { const i2 = [...prev]; i2.splice(prev.indexOf(item), 1); return i2; });
+                          setInventory(prev => { const idx = prev.findIndex(i => i.name === item.name && i.effect === "heal"); const i2 = [...prev]; if (idx !== -1) i2.splice(idx, 1); return i2; });
                           addLog(`Used ${item.name} (+${healAmt} HP)`);
                         }} style={{ ...S.btn, ...S.btnSuccess, padding: "3px 10px", fontSize: 13 }}>Use</button>
                       </div>
-                    ))
-                  }
+                    ));
+                  })()}
                 </div>
               )}
 
@@ -7501,13 +7456,7 @@ const heroUrl = "hero_sprite.png";
                   display: "flex", alignItems: "center", justifyContent: "center",
                   overflow: "hidden",
                 }}>
-                  <SpriteImage spriteKey={
-                    opp?.rarityIdx === 4 ? "ember_drake" :
-                    opp?.rarityIdx === 3 ? "brutal_ogre" :
-                    opp?.rarityIdx === 2 ? "rock_golem" :
-                    opp?.rarityIdx === 1 ? "orc_warchief" :
-                    "leaf_goblin"
-                  } size={165} spriteSheetUrl={spriteSheetUrl} />
+                  <SpriteImage spriteKey={enemy.name?.toLowerCase().replace(/ /g, "_")} size={165} spriteSheetUrl={null} />
                 </div>
                 <div style={{ fontWeight: 700, fontSize: 16, color: opp ? (TOURNAMENT_RARITIES[opp.rarityIdx]?.color || "#c04848") : "#c04848" }}>{enemy.name}</div>
                 <div style={{ fontSize: 12, opacity: 0.6, marginTop: -4 }}>{opp?.label}</div>
@@ -7529,13 +7478,13 @@ const heroUrl = "hero_sprite.png";
                 {learnedAbilities.spells.map(sid => {
                   const spell = SPELLS.find(s => s.id === sid);
                   if (!spell) return null;
-                  return <button key={sid} onClick={() => castSpell(spell)} style={{ ...S.btn, fontSize: 13, padding: "4px 10px", borderColor: "#4a7ab8", color: "#4a7ab8" }} disabled={mana < spell.manaCost}>{spell.name} ({spell.manaCost}MP)</button>;
+                  return <button key={sid} onClick={() => castSpell(spell.id)} style={{ ...S.btn, fontSize: 13, padding: "4px 10px", borderColor: "#4a7ab8", color: "#4a7ab8" }} disabled={mana < spell.manaCost}>{spell.name} ({spell.manaCost}MP)</button>;
                 })}
                 {learnedAbilities.specials.map(sid => {
                   const special = SPECIALS.find(s => s.id === sid);
                   if (!special) return null;
                   const hpCost = Math.ceil(stats.maxHp * (special.hpCostPercent || 0));
-                  return <button key={sid} onClick={() => useSpecial(special)} style={{ ...S.btn, fontSize: 13, padding: "4px 10px", borderColor: "#c04848", color: "#c04848" }} disabled={hp <= hpCost}>{special.name} ({hpCost}HP)</button>;
+                  return <button key={sid} onClick={() => useSpecial(special.id)} style={{ ...S.btn, fontSize: 13, padding: "4px 10px", borderColor: "#c04848", color: "#c04848" }} disabled={hp <= hpCost}>{special.name} ({hpCost}HP)</button>;
                 })}
               </div>
             )}
