@@ -151,11 +151,11 @@ const TOURNAMENT_NPC_BY_NAME = Object.fromEntries(TOURNAMENT_NPC_ROSTER.map(n =>
 const TOURNAMENT_NAMES_BY_RARITY = [0,1,2,3,4].map(r => TOURNAMENT_NPC_ROSTER.filter(n => n.rarityIdx === r).map(n => n.name));
 
 const TOURNAMENT_RARITIES = [
-  { name: "Normal",    color: "#aaaaaa", statMult: 0.80, label: "Squire"           },
-  { name: "Uncommon",  color: "#3aaa60", statMult: 0.95, label: "Uncommon Knight"  },
-  { name: "Rare",      color: "#4a7ab8", statMult: 1.10, label: "Rare Knight"      },
-  { name: "Epic",      color: "#a855f7", statMult: 1.30, label: "Epic Knight"      },
-  { name: "Legendary", color: "#ff8c00", statMult: 1.50, label: "Legendary Knight" },
+  { name: "Normal",    color: "#aaaaaa", statMult: 0.80, label: "Squire"      },
+  { name: "Uncommon",  color: "#3aaa60", statMult: 0.95, label: "Hedgeknight" },
+  { name: "Rare",      color: "#4a7ab8", statMult: 1.10, label: "Sworn Sword" },
+  { name: "Epic",      color: "#a855f7", statMult: 1.30, label: "Kingsguard"  },
+  { name: "Legendary", color: "#ff8c00", statMult: 1.50, label: "Champion"    },
 ];
 
 function generateTournamentNPC(rarityIdx, playerStats, regionMaxLevel, seed) {
@@ -4030,11 +4030,9 @@ const heroUrl = "hero_sprite.png";
     setPlayerStatus(prevStatus => {
       if (!prevStatus.type) {
         setCombatLog(prev => [...prev, `${getStatusEmoji(statusType)} You are affected by ${statusType}!`]);
-return {
-          type: statusType,
-          duration: duration + 1,  // +1 compensates for immediate tick
-          damagePerTurn: damagePerTurn
-        };
+const ns = { type: statusType, duration: duration + 1, damagePerTurn: damagePerTurn };
+        playerStatusRef.current = ns;
+        return ns;
       } else {
         // ❌ Status wird ignoriert - Player hat bereits Status
         setCombatLog(prev => [...prev, `🛡️ You resist the status!`]);
@@ -4051,11 +4049,9 @@ return {
       if (!prevStatus.type) {
         console.log("✅ Status applied successfully:", statusType);
         setCombatLog(prev => [...prev, `${getStatusEmoji(statusType)} ${enemy.name} is affected by ${statusType}!`]);
-return {
-          type: statusType,
-          duration: duration + 1,  // +1 compensates for immediate tick
-          damagePerTurn: damagePerTurn
-        };
+const ns = { type: statusType, duration: duration + 1, damagePerTurn: damagePerTurn };
+        enemyStatusRef.current = ns;
+        return ns;
       } else {
         // ❌ Status wird ignoriert - Enemy hat bereits Status
         console.log("❌ Status resisted! Enemy already has:", prevStatus.type);
@@ -4596,8 +4592,7 @@ return {
   }, [applyStatusDamagePerTurn]);
 
   // Keep status refs always current
-  useEffect(() => { playerStatusRef.current = playerStatus; }, [playerStatus]);
-  useEffect(() => { enemyStatusRef.current = enemyStatus; }, [enemyStatus]);
+  // playerStatusRef and enemyStatusRef are updated synchronously when status changes
 
   // ✅ SAFETY NET: Wenn Kampf endet (enemy === null), lösche alle Status/Buffs
   // Das ist ein Sicherheitsnetz falls andere Pfade nicht löschen
@@ -4773,7 +4768,12 @@ return {
             return;
           }
         }
-        setEnemyStatus(prev => { const d = Math.max(0, prev.duration - 1); return { ...prev, duration: d, type: d <= 0 ? null : prev.type }; });
+        setEnemyStatus(prev => { 
+          const d = Math.max(0, prev.duration - 1); 
+          const next = { ...prev, duration: d, type: d <= 0 ? null : prev.type };
+          enemyStatusRef.current = next;
+          return next;
+        });
       }
       if (curPS.type && curPS.duration > 0) {
         let dmg = 0;
@@ -4790,7 +4790,12 @@ return {
             return;
           }
         }
-        setPlayerStatus(prev => { const d = Math.max(0, prev.duration - 1); return { ...prev, duration: d, type: d <= 0 ? null : prev.type }; });
+        setPlayerStatus(prev => { 
+          const d = Math.max(0, prev.duration - 1); 
+          const next = { ...prev, duration: d, type: d <= 0 ? null : prev.type };
+          playerStatusRef.current = next;
+          return next;
+        });
       }
       if (statusLogs.length > 0) setCombatLog(prev => [...prev, ...statusLogs]);
     }
@@ -4858,8 +4863,8 @@ return {
         // Floating text
         addFloatingDamage(totalSpecialDmg, 150, 130, false, false, false, false);
         // Apply effect to player
-        if (special.effect === "bleed")  setPlayerStatus({ type: "bleed",  duration: (special.bleedDuration  || 3) + 1, damagePerTurn: 0 });
-        if (special.effect === "poison") setPlayerStatus({ type: "poison", duration: (special.poisonDuration || 3) + 1, damagePerTurn: 0 });
+        if (special.effect === "bleed")  { const ns = { type: "bleed", duration: (special.bleedDuration||3)+1, damagePerTurn: 0 }; playerStatusRef.current = ns; setPlayerStatus(ns); }
+        if (special.effect === "poison") { const ns = { type: "poison", duration: (special.poisonDuration||3)+1, damagePerTurn: 0 }; playerStatusRef.current = ns; setPlayerStatus(ns); }
         if (special.effect === "stun")   setPlayerStatus({ type: "stun",   duration: (special.stunDuration   || 1) + 1, damagePerTurn: 0 });
         if (special.effect === "slow")   setPlayerStatus({ type: "slow",   duration: 2,                         damagePerTurn: 0 });
         const newHpSpecial = hp - totalSpecialDmg;
@@ -7338,7 +7343,7 @@ return {
         const prefix = p.isPlayer ? "" : p.rarityIdx === 0 ? "Squire " : "Knight ";
         return (
           <div style={{
-            color, fontSize: 13, fontWeight: p.isPlayer ? 700 : 400,
+            color, fontSize: 16, fontWeight: p.isPlayer ? 700 : 600,
             opacity: (isPast && !isWinner) ? 0.3 : 1,
             padding: "2px 4px",
             background: isWinner && isPast ? color + "22" : "transparent",
@@ -7355,7 +7360,7 @@ return {
 
       return (
         <div style={{ overflowX: "auto", marginBottom: 12 }}>
-          <div style={{ display: "flex", gap: 6, minWidth: 500 }}>
+          <div style={{ display: "flex", gap: 8, minWidth: 600 }}>
             {tournament.roundResults.map((matches, ri) => {
               if (ri > tournament.currentRound) return null;
               const isPast = ri < tournament.currentRound;
@@ -7381,7 +7386,7 @@ return {
                       <div key={mi} style={{
                         background: isPlayerMatch ? (isCurrent ? "#ff8c0011" : "#b8962a08") : "#ffffff04",
                         border: `1px solid ${borderColor}`,
-                        borderRadius: 5, padding: "4px 6px",
+                        borderRadius: 5, padding: "6px 8px",
                         boxShadow: isPlayerMatch && isCurrent ? "0 0 8px #ff8c0033" : "none",
                       }}>
                         {renderParticipant(m.a, aWon, isPast)}
