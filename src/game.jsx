@@ -4023,9 +4023,7 @@ const heroUrl = "hero_sprite.png";
     setPlayerStatus(prevStatus => {
       if (!prevStatus.type) {
         setCombatLog(prev => [...prev, `${getStatusEmoji(statusType)} You are affected by ${statusType}!`]);
-const ns = { type: statusType, duration: duration + 1, damagePerTurn: damagePerTurn };
-        playerStatusRef.current = ns;
-        return ns;
+return { type: statusType, duration: duration, damagePerTurn: damagePerTurn };
       } else {
         // ❌ Status wird ignoriert - Player hat bereits Status
         setCombatLog(prev => [...prev, `🛡️ You resist the status!`]);
@@ -4040,9 +4038,7 @@ const ns = { type: statusType, duration: duration + 1, damagePerTurn: damagePerT
     setEnemyStatus(prevStatus => {
       if (!prevStatus.type) {
         setCombatLog(prev => [...prev, `${getStatusEmoji(statusType)} ${enemy.name} is affected by ${statusType}!`]);
-const ns = { type: statusType, duration: duration + 1, damagePerTurn: damagePerTurn };
-        enemyStatusRef.current = ns;
-        return ns;
+return { type: statusType, duration: duration, damagePerTurn: damagePerTurn };
       } else {
         // ❌ Status wird ignoriert - Enemy hat bereits Status
         setCombatLog(prev => [...prev, `🛡️ ${enemy.name} resists the status!`]);
@@ -4135,10 +4131,6 @@ const ns = { type: statusType, duration: duration + 1, damagePerTurn: damagePerT
     setAbilityChoicePopup(null);
   }, [addLog]);
 
-  // ✅ REF für applyStatusDamagePerTurn - wird am Ende definiert, aber Ref wird hier erstellt
-  const applyStatusDamagePerTurnRef = useRef(null);
-  const playerStatusRef = useRef({ type: null, duration: 0, damagePerTurn: 0 });
-  const enemyStatusRef = useRef({ type: null, duration: 0, damagePerTurn: 0 });
 
   const castSpell = useCallback((spellId) => {
     if (!enemy || enemyHp <= 0) return;
@@ -4270,7 +4262,7 @@ const ns = { type: statusType, duration: duration + 1, damagePerTurn: damagePerT
       handleEnemyBuffDecrement();
       
       // ✅ NEW: Apply Status Damage FIRST before enemy counter-attack
-      applyStatusDamagePerTurnRef.current?.();
+      handleEnemyStatusCheck();
       
       // ❌ NUR STUN blockiert die Attacke!
       if (enemyStatus.type === "stun" && enemyStatus.duration > 0) {
@@ -4459,7 +4451,7 @@ const ns = { type: statusType, duration: duration + 1, damagePerTurn: damagePerT
       handleEnemyBuffDecrement();
       
       // ✅ NEW: Apply Status Damage FIRST before enemy counter-attack
-      applyStatusDamagePerTurnRef.current?.();
+      handleEnemyStatusCheck();
       
       // ❌ NUR STUN blockiert die Attacke!
       if (enemyStatus.type === "stun" && enemyStatus.duration > 0) {
@@ -4512,69 +4504,8 @@ const ns = { type: statusType, duration: duration + 1, damagePerTurn: damagePerT
     }, 400);
   }, [enemy, enemyHp, hp, stats, endCombat, handlePlayerStatusCheck, handleEnemyStatusCheck, applyEnemyStatus, playerBuffs, handleEnemyBuffDecrement]);
 
-  // ✅ NEW: Unified Status Damage Function - wird bei JEDEM Turn aufgerufen
-  // Anwendet Schaden für BEIDE: Spieler und Enemy
-  const applyStatusDamagePerTurn = useCallback(() => {
-    // Read from refs to always get current values (not stale closure)
-    const curPlayerStatus = playerStatusRef.current;
-    const curEnemyStatus = enemyStatusRef.current;
-
-    let enemyStatusDmg = 0;
-    let playerStatusDmg = 0;
-    const logs = [];
-
-    // ENEMY STATUS DAMAGE
-    if (enemy && curEnemyStatus.type && curEnemyStatus.duration > 0) {
-      if (curEnemyStatus.type === "burn")   enemyStatusDmg = Math.ceil(enemy.maxHp * 0.10);
-      else if (curEnemyStatus.type === "bleed")  enemyStatusDmg = Math.ceil(enemy.maxHp * 0.07);
-      else if (curEnemyStatus.type === "poison") enemyStatusDmg = Math.ceil(enemy.maxHp * 0.05);
-
-      if (enemyStatusDmg > 0) {
-        logs.push(`${getStatusEmoji(curEnemyStatus.type)} ${enemy.name} takes ${enemyStatusDmg} damage from ${curEnemyStatus.type}!`);
-        setEnemyHp(prev => {
-          const newHp = Math.max(0, prev - enemyStatusDmg);
-          if (newHp <= 0) {
-            if (enemy?.isTournamentFight) { if (!tournamentDefeatRef.current) handleTournamentDefeat(); return prev; }
-            logs.push(`💀 ${enemy.name} died from ${curEnemyStatus.type}!`);
-            endCombat();
-          }
-          return newHp;
-        });
-      }
-      setEnemyStatus(prev => {
-        const newDuration = Math.max(0, prev.duration - 1);
-        return { ...prev, duration: newDuration, type: newDuration <= 0 ? null : prev.type };
-      });
-    }
-
-    // PLAYER STATUS DAMAGE
-    if (curPlayerStatus.type && curPlayerStatus.duration > 0) {
-      if (curPlayerStatus.type === "burn")   playerStatusDmg = Math.ceil(stats.maxHp * 0.10);
-      else if (curPlayerStatus.type === "bleed")  playerStatusDmg = Math.ceil(stats.maxHp * 0.07);
-      else if (curPlayerStatus.type === "poison") playerStatusDmg = Math.ceil(stats.maxHp * 0.05);
-
-      if (playerStatusDmg > 0) {
-        logs.push(`${getStatusEmoji(curPlayerStatus.type)} You take ${playerStatusDmg} damage from ${curPlayerStatus.type}!`);
-        setHp(prev => Math.max(0, prev - playerStatusDmg));
-      }
-      setPlayerStatus(prev => {
-        const newDuration = Math.max(0, prev.duration - 1);
-        return { ...prev, duration: newDuration, type: newDuration <= 0 ? null : prev.type };
-      });
-    }
-
-    if ((enemyStatusDmg > 0 || playerStatusDmg > 0) && logs.length > 0) {
-      setCombatLog(prev => [...prev, ...logs]);
-    }
-  }, [enemy, stats, endCombat]);
-
-  // ✅ Update Ref wenn Funktion sich ändert
-  useEffect(() => {
-    applyStatusDamagePerTurnRef.current = applyStatusDamagePerTurn;
-  }, [applyStatusDamagePerTurn]);
 
   // Keep status refs always current
-  // playerStatusRef and enemyStatusRef are updated synchronously when status changes
 
   // ✅ SAFETY NET: Wenn Kampf endet (enemy === null), lösche alle Status/Buffs
   // Das ist ein Sicherheitsnetz falls andere Pfade nicht löschen
@@ -4735,9 +4666,8 @@ const ns = { type: statusType, duration: duration + 1, damagePerTurn: damagePerT
     // ✅ NEW: Enemy Buff Decrement vor Counter-Attack
     handleEnemyBuffDecrement();
 
-    // ✅ Apply Status Damage - same functions as normal combat
+    // ✅ Apply Status Damage - enemy status tick only (player status already ticked at turn start)
     handleEnemyStatusCheck();
-    handlePlayerStatusCheck();
     
     // ❌ NUR STUN blockiert die Attacke!
     if (enemyStatus.type === "stun" && enemyStatus.duration > 0) {
@@ -4767,9 +4697,8 @@ const ns = { type: statusType, duration: duration + 1, damagePerTurn: damagePerT
       const specialId = enemy.specials[Math.floor(Math.random() * enemy.specials.length)];
       const special = SPECIALS.find(s => s.id === specialId);
       if (special) {
-        // Apply status tick before NPC special
+        // Apply status tick before NPC special (enemy only)
         handleEnemyStatusCheck();
-        handlePlayerStatusCheck();
         const hpCost = Math.ceil(enemy.maxHp * (special.hpCostPercent || 0));
         const baseDmg = randInt(special.dmgRange[0], special.dmgRange[1]);
         const hits = special.hitCount || 1;
@@ -4782,9 +4711,9 @@ const ns = { type: statusType, duration: duration + 1, damagePerTurn: damagePerT
         // Floating text
         addFloatingDamage(totalSpecialDmg, 150, 130, false, false, false, false);
         // Apply effect to player
-        if (special.effect === "bleed")  { const ns = { type: "bleed", duration: (special.bleedDuration||3)+1, damagePerTurn: 0 }; playerStatusRef.current = ns; setPlayerStatus(ns); }
-        if (special.effect === "poison") { const ns = { type: "poison", duration: (special.poisonDuration||3)+1, damagePerTurn: 0 }; playerStatusRef.current = ns; setPlayerStatus(ns); }
-        if (special.effect === "stun")   setPlayerStatus({ type: "stun",   duration: (special.stunDuration   || 1) + 1, damagePerTurn: 0 });
+        if (special.effect === "bleed")  setPlayerStatus({ type: "bleed",  duration: (special.bleedDuration||3), damagePerTurn: 0 });
+        if (special.effect === "poison") setPlayerStatus({ type: "poison", duration: (special.poisonDuration||3), damagePerTurn: 0 });
+        if (special.effect === "stun")   setPlayerStatus({ type: "stun",   duration: (special.stunDuration   || 1), damagePerTurn: 0 });
         if (special.effect === "slow")   setPlayerStatus({ type: "slow",   duration: 2,                         damagePerTurn: 0 });
         const newHpSpecial = hp - totalSpecialDmg;
         if (newHpSpecial <= 0) {
@@ -4921,7 +4850,7 @@ const ns = { type: statusType, duration: duration + 1, damagePerTurn: damagePerT
       setEnemy(null);
     } else {
       // ✅ NEW: Apply Status Damage FIRST before enemy counter-attack
-      applyStatusDamagePerTurnRef.current?.();
+      handleEnemyStatusCheck();
       
       const dodged = Math.random() < stats.dodgeChance;
       if (dodged) {
@@ -4963,7 +4892,7 @@ const ns = { type: statusType, duration: duration + 1, damagePerTurn: damagePerT
     addFloatingDamage(`+${healAmount}`, playerX, playerY, false, true);
 
     // ✅ NEW: Apply Status Damage FIRST before enemy counter-attack
-    applyStatusDamagePerTurnRef.current?.();
+    handleEnemyStatusCheck();
 
     // Enemy counterattack (can be dodged)
     const dodged = Math.random() < stats.dodgeChance;
