@@ -3955,12 +3955,6 @@ const heroUrl = "hero_sprite.png";
       }
       
       // 🔴 DEBUG LOG
-      console.log("=== handleEnemyStatusCheck DEBUG ===");
-      console.log("enemyStatus:", enemyStatus);
-      console.log("enemy:", enemy);
-      console.log("enemy.maxHp:", enemy?.maxHp);
-      console.log("damageAmount calculated:", damageAmount);
-      console.log("enemyHp BEFORE:", enemyHp);
       
       // ℹ️ Nur Damage-Log wenn Schaden > 0
       if (damageAmount > 0) {
@@ -3969,36 +3963,37 @@ const heroUrl = "hero_sprite.png";
         
         // Wende Schaden an
         const newHp = enemyHp - damageAmount;
-        console.log("newHp calculated (enemyHp - damageAmount):", newHp);
         setEnemyHp(Math.max(0, newHp));
-        console.log("enemyHp AFTER setEnemyHp:", Math.max(0, newHp));
         
         // Prüfe auf Tod NACH HP-Berechnung
         if (newHp <= 0) {
-          if (enemy?.isTournamentFight) { if (!tournamentDefeatRef.current) handleTournamentDefeat(); return prev; }
           setCombatLog(cl => [...cl, `💀 ${enemy.name} died from ${enemyStatus.type}!`]);
-          
-          // ✅ FIX 1 & 2: Sofortiger Status-Cleanup (synchron!)
-          // Status wird SOFORT null gesetzt, nicht nach 100ms
           setPlayerStatus({ type: null, duration: 0, damagePerTurn: 0 });
           setEnemyStatus({ type: null, duration: 0, damagePerTurn: 0 });
           setPlayerBuffs({ active: [] });
           setEnemyBuffs({ active: [] });
-          
-          // Screen-Wechsel später
-          setTimeout(() => { 
-            setScreen("world"); 
-            setEnemy(null); 
+          setTimeout(() => {
+            if (enemy?.isTournamentFight) {
+              setTournament(prev => {
+                if (!prev) return prev;
+                const isFinal = prev.currentRound === 3;
+                if (isFinal) {
+                  setCompletedTournaments(s => new Set([...s, prev.capitalKey]));
+                  return { ...prev, phase: "done", finalLoot: null };
+                }
+                return { ...prev, currentRound: prev.currentRound + 1, phase: "between" };
+              });
+              setScreen("tournament");
+              setEnemy(null);
+              return;
+            }
+            setScreen("world");
+            setEnemy(null);
           }, 1500);
-          
-          console.log("✅ Enemy killed by status effect - cleanup triggered immediately (not async)");
-          console.log("=== END DEBUG ===\n");
-          
           return { handled: true, newHp: Math.max(0, newHp), killed: true };
         }
       } else {
         // Slow & Stun: Nur Status-Info ohne Schaden
-        console.log("damageAmount was 0 or less, no damage applied. enemyHp stays:", enemyHp);
         const statusLog = enemyStatus.type === "slow" 
           ? `❄️ ${enemy.name} is slowed!` 
           : `😵 ${enemy.name} is stunned!`;
@@ -4016,8 +4011,6 @@ const heroUrl = "hero_sprite.png";
         };
       });
       
-      console.log("Duration reduced to:", Math.max(0, enemyStatus.duration - 1));
-      console.log("=== END DEBUG ===\n");
       
       // ✅ WICHTIG: Return den AKTUELLEN enemyHp statt zu hoffen dass State aktualisiert wird!
       return { handled: true, newHp: enemyHp, killed: false };
@@ -4043,18 +4036,15 @@ const ns = { type: statusType, duration: duration + 1, damagePerTurn: damagePerT
 
   const applyEnemyStatus = useCallback((statusType, duration, damagePerTurn) => {
     if (!enemy) return false;
-    console.log("🔴 applyEnemyStatus called:", { statusType, duration, damagePerTurn, enemy: enemy?.name });
     // ✅ Nur wenn Enemy keinen Status hat - AKTUELLER enemyStatus wird gecheckt
     setEnemyStatus(prevStatus => {
       if (!prevStatus.type) {
-        console.log("✅ Status applied successfully:", statusType);
         setCombatLog(prev => [...prev, `${getStatusEmoji(statusType)} ${enemy.name} is affected by ${statusType}!`]);
 const ns = { type: statusType, duration: duration + 1, damagePerTurn: damagePerTurn };
         enemyStatusRef.current = ns;
         return ns;
       } else {
         // ❌ Status wird ignoriert - Enemy hat bereits Status
-        console.log("❌ Status resisted! Enemy already has:", prevStatus.type);
         setCombatLog(prev => [...prev, `🛡️ ${enemy.name} resists the status!`]);
         return prevStatus; // Status bleibt unverändert
       }
@@ -4064,7 +4054,6 @@ const ns = { type: statusType, duration: duration + 1, damagePerTurn: damagePerT
   // ✅ NEW: BUFF SYSTEM FUNKTIONEN
 
   const applyPlayerBuff = useCallback((buffType, duration, charges = 0) => {
-    console.log("✅ applyPlayerBuff:", { buffType, duration, charges });
     setPlayerBuffs(prev => {
       // Entferne alte Buff des gleichen Typs wenn vorhanden
       const filtered = prev.active.filter(b => b.type !== buffType);
@@ -4080,7 +4069,6 @@ const ns = { type: statusType, duration: duration + 1, damagePerTurn: damagePerT
   }, []);
 
   const applyEnemyBuff = useCallback((buffType, duration, charges = 0) => {
-    console.log("✅ applyEnemyBuff:", { buffType, duration, charges });
     setEnemyBuffs(prev => {
       const filtered = prev.active.filter(b => b.type !== buffType);
       return {
@@ -4331,7 +4319,7 @@ const ns = { type: statusType, duration: duration + 1, damagePerTurn: damagePerT
           setPlayerBuffs({ active: [] });
           setEnemyBuffs({ active: [] });
           
-          setCombatLog(cl => [...cl, (enemy.isTournamentFight ? getTournamentCombatLog(enemy.name, enemyDmg, false, Date.now() + 1, true) : enemy.isTournamentFight ? getTournamentCombatLog(enemy.name, enemyDmg, false, Date.now() + 1, true) : `${enemy.name} deals ${enemyDmg} damage!`), `💀 You have been defeated!`]);
+          setCombatLog(cl => [...cl, enemy.isTournamentFight ? getTournamentCombatLog(enemy.name, enemyDmg, false, Date.now() + 1, true) : `${enemy.name} deals ${enemyDmg} damage!`, `💀 You have been defeated!`]);
           return stats.maxHp;
         }
         setCombatLog(cl => [...cl, enemy.isTournamentFight ? getTournamentCombatLog(enemy.name, enemyDmg, false, Date.now() + 1, true) : `${enemy.name} deals ${enemyDmg} damage!`]);
@@ -4439,12 +4427,6 @@ const ns = { type: statusType, duration: duration + 1, damagePerTurn: damagePerT
 
     if (special.effect === "bleed") {
       // Bleed: 7% HP für 3 Runden
-      console.log("🩸 BLEED SPECIAL USED:", { 
-        specialName: special.name,
-        enemyName: enemy.name,
-        enemyHpBefore: newEnemyHp,
-        willApplyStatus: newEnemyHp > 0
-      });
       if (newEnemyHp > 0) {
         applyEnemyStatus("bleed", 3, 0);
       }
@@ -4521,7 +4503,7 @@ const ns = { type: statusType, duration: duration + 1, damagePerTurn: damagePerT
         const newHp = prev - enemyDmg;
         if (newHp <= 0) {
           if (enemy?.isTournamentFight) { if (!tournamentDefeatRef.current) handleTournamentDefeat(); return prev; }
-          setCombatLog(cl => [...cl, (enemy.isTournamentFight ? getTournamentCombatLog(enemy.name, enemyDmg, false, Date.now() + 1, true) : enemy.isTournamentFight ? getTournamentCombatLog(enemy.name, enemyDmg, false, Date.now() + 1, true) : `${enemy.name} deals ${enemyDmg} damage!`), `💀 You have been defeated!`]);
+          setCombatLog(cl => [...cl, enemy.isTournamentFight ? getTournamentCombatLog(enemy.name, enemyDmg, false, Date.now() + 1, true) : `${enemy.name} deals ${enemyDmg} damage!`, `💀 You have been defeated!`]);
           return stats.maxHp;
         }
         setCombatLog(cl => [...cl, enemy.isTournamentFight ? getTournamentCombatLog(enemy.name, enemyDmg, false, Date.now() + 1, true) : `${enemy.name} deals ${enemyDmg} damage!`]);
@@ -4598,7 +4580,6 @@ const ns = { type: statusType, duration: duration + 1, damagePerTurn: damagePerT
   // Das ist ein Sicherheitsnetz falls andere Pfade nicht löschen
   useEffect(() => {
     if (enemy === null && screen !== "combat" && screen !== "tournament_combat" && screen !== "tournament") {
-      console.log("🛡️ SAFETY NET: Clearing all status/buffs because combat ended");
       setPlayerStatus({ type: null, duration: 0, damagePerTurn: 0 });
       setEnemyStatus({ type: null, duration: 0, damagePerTurn: 0 });
       setPlayerBuffs({ active: [] });
@@ -4608,6 +4589,13 @@ const ns = { type: statusType, duration: duration + 1, damagePerTurn: damagePerT
 
   const attack = useCallback(() => {
     if (!enemy) return;
+
+    // Block attack if player is stunned
+    if (playerStatus.type === "stun" && playerStatus.duration > 0) {
+      setCombatLog(prev => [...prev, `😵 You are stunned and cannot attack!`]);
+      setPlayerStatus(prev => { const d = Math.max(0, prev.duration - 1); return { ...prev, duration: d, type: d <= 0 ? null : prev.type }; });
+      return;
+    }
     
     // ✅ NEW: Buff Decrement am Anfang der Runde
     handlePlayerBuffDecrement();
@@ -4625,7 +4613,6 @@ const ns = { type: statusType, duration: duration + 1, damagePerTurn: damagePerT
     if (critBoostBuff && critBoostBuff.charges > 0) {
       // Garantierter Crit!
       isCrit = true;
-      console.log("⚡ Crit Boost aktiviert! Guaranteed Crit!");
       // Charges reduzieren
       setPlayerBuffs(prev => ({
         active: prev.active.map(b => 
@@ -5001,7 +4988,7 @@ const ns = { type: statusType, duration: duration + 1, damagePerTurn: damagePerT
           
           const goldLost = Math.floor(gold * 0.8);
           const itemsLost = inventory.length - 1; // -1 because we just used one
-          setCombatLog(cl => [...cl, enemy.isTournamentFight ? getTournamentCombatLog(enemy.name, enemyDmg, false, Date.now() + 1, true) : (enemy.isTournamentFight ? getTournamentCombatLog(enemy.name, enemyDmg, false, Date.now() + 1, true) : `${enemy.name} deals ${enemyDmg} damage!`), `💀 You have been defeated! Lost ${goldLost}g and ${itemsLost} items!`]);
+          setCombatLog(cl => [...cl, enemy.isTournamentFight ? getTournamentCombatLog(enemy.name, enemyDmg, false, Date.now() + 1, true) : `${enemy.name} deals ${enemyDmg} damage!`, `💀 You have been defeated! Lost ${goldLost}g and ${itemsLost} items!`]);
           addLog(`💀 Defeated by ${enemy.name}! Lost ${goldLost}g and ${itemsLost} items.`);
           setGold(g => g - Math.floor(g * 0.8));
           setInventory([]);
@@ -7853,7 +7840,6 @@ function loadGame(slotIndex = 0) {
       raw = localStorage.getItem(SAVE_KEY);
       if (raw) {
         // Automatically migrate old save to slot 0
-        console.log("Migrating old save to slot 0...");
         const data = JSON.parse(raw);
         data.completedQuestIds = new Set(data.completedQuestIds || []);
         data.visitedCities = new Set(data.visitedCities || []);
