@@ -3372,6 +3372,7 @@ const heroUrl = "hero_sprite.png";
   const bigMapCanvasRef = useRef(null);
   const mapAnimRef = useRef(null);
   const tournamentDefeatRef = useRef(false);
+  const isAttackingRef = useRef(false);
 
   // Auto-save when returning to world screen or entering a city
   const doSave = useCallback(() => {
@@ -4441,21 +4442,7 @@ return { type: statusType, duration: duration, damagePerTurn: damagePerTurn };
     if (special.effect === "bleed") {
       if (newEnemyHp > 0) {
         applyEnemyStatus("bleed", 3, 0);
-        // Apply first bleed tick after a short delay so HP bar shows 2 separate ticks
-        const firstBleedDmg = Math.ceil(enemy.maxHp * 0.07);
-        setTimeout(() => {
-          setCombatLog(prev => [...prev, `🩸 ${enemy.name} takes ${firstBleedDmg} damage from bleed!`]);
-          setEnemyHp(prev => {
-            const afterBleed = Math.max(0, prev - firstBleedDmg);
-            if (afterBleed <= 0) {
-              setEnemyStatus({ type: null, duration: 0, damagePerTurn: 0 });
-              endCombat();
-            } else {
-              setEnemyStatus(prev => prev.type === "bleed" ? { ...prev, duration: Math.max(0, prev.duration - 1), type: prev.duration - 1 <= 0 ? null : prev.type } : prev);
-            }
-            return afterBleed;
-          });
-        }, 250);
+        // First bleed tick runs naturally in the counter-attack timer below (400ms)
       }
     } else if (special.effect === "crit") {
       // ✅ NEW: Berserk/Overdrive geben Crit Boost
@@ -4568,6 +4555,9 @@ return { type: statusType, duration: duration, damagePerTurn: damagePerTurn };
 
   const attack = useCallback(() => {
     if (!enemy) return;
+    if (isAttackingRef.current) return;
+    isAttackingRef.current = true;
+    setTimeout(() => { isAttackingRef.current = false; }, 600);
 
     // Block attack if player is stunned
     if (playerStatus.type === "stun" && playerStatus.duration > 0) {
@@ -4754,22 +4744,7 @@ return { type: statusType, duration: duration, damagePerTurn: damagePerTurn };
       const specialId = enemy.specials[Math.floor(Math.random() * enemy.specials.length)];
       const special = SPECIALS.find(s => s.id === specialId);
       if (special) {
-        // Inline enemy status tick before NPC special
-        if (enemyStatus.type && enemyStatus.duration > 0) {
-          let sDmg = 0;
-          if (enemyStatus.type === "burn")        sDmg = Math.ceil(enemy.maxHp * 0.10);
-          else if (enemyStatus.type === "bleed")  sDmg = Math.ceil(enemy.maxHp * 0.07);
-          else if (enemyStatus.type === "poison") sDmg = Math.ceil(enemy.maxHp * 0.05);
-          if (sDmg > 0) {
-            newCombatLog.push(`${getStatusEmoji(enemyStatus.type)} ${enemy.name} takes ${sDmg} damage from ${enemyStatus.type}!`);
-            setEnemyHp(prev => {
-            const after = Math.max(0, prev - sDmg);
-            if (after <= 0) { setEnemyStatus({ type: null, duration: 0, damagePerTurn: 0 }); endCombat(); }
-            return after;
-          });
-          }
-          setEnemyStatus(prev => { const d = Math.max(0, prev.duration - 1); return { ...prev, duration: d, type: d <= 0 ? null : prev.type }; });
-        }
+        // Status tick already ran earlier this round (line 4712) - skip here
         const hpCost = Math.ceil(enemy.maxHp * (special.hpCostPercent || 0));
         const baseDmg = randInt(special.dmgRange[0], special.dmgRange[1]);
         const hits = special.hitCount || 1;
