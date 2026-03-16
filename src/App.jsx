@@ -3397,7 +3397,7 @@ const heroUrl = "hero_sprite.png";
     
     // Starter Plains chunk: xMin: 170, xMax: 300, yMin: 280, yMax: 410
     const starterPlainsCities = Object.entries(cities).filter(([key, city]) => {
-      return city.x >= 170 && city.x <= 300 && city.y >= 280 && city.y <= 410;
+      return city.x >= 170 && city.x <= 300 && city.y >= 280 && city.y <= 410 && !city.isCapital;
     });
     
     if (starterPlainsCities.length > 0) {
@@ -5274,7 +5274,7 @@ const ns = { type: statusType, duration: duration + 1, damagePerTurn: damagePerT
       return;
     }
     
-    if (!quest || !isQuestComplete(quest)) return;
+    if (!quest) return;
     
     setGold(prev => prev + quest.goldReward);
     setXp(prev => prev + quest.xpReward);
@@ -6796,7 +6796,14 @@ const ns = { type: statusType, duration: duration + 1, damagePerTurn: damagePerT
                 const cityRegion = getChunkTier(currentCity.x, currentCity.y);
                 const regionName = cityRegion?.name || "Unknown Region";
                 const levelText = cityRegion?.isDynamic ? "Dynamic" : cityRegion?.levelRange ? `Lv ${cityRegion.levelRange[0]}–${cityRegion.levelRange[1]}` : "";
-                return <span style={S.badge("#b8962a")}>{regionName}{levelText ? ` • ${levelText}` : ""}</span>;
+                const cityBiome = getBiome(currentCity.x, currentCity.y, worldSeed);
+                const biomeLabel = cityBiome ? cityBiome.charAt(0).toUpperCase() + cityBiome.slice(1) : "";
+                return (
+                  <div style={{ display: "flex", gap: 6, justifyContent: "center", flexWrap: "wrap" }}>
+                    <span style={S.badge("#b8962a")}>{regionName}{levelText ? ` • ${levelText}` : ""}</span>
+                    {biomeLabel && <span style={S.badge("#4a7ab8")}>{biomeLabel}</span>}
+                  </div>
+                );
               })()}
             </div>
 
@@ -7360,7 +7367,7 @@ const ns = { type: statusType, duration: duration + 1, damagePerTurn: damagePerT
 
       return (
         <div style={{ overflowX: "auto", marginBottom: 12 }}>
-          <div style={{ display: "flex", gap: 8, minWidth: 600 }}>
+          <div style={{ display: "flex", gap: 8, minWidth: 720 }}>
             {tournament.roundResults.map((matches, ri) => {
               if (ri > tournament.currentRound) return null;
               const isPast = ri < tournament.currentRound;
@@ -7411,7 +7418,7 @@ const ns = { type: statusType, duration: duration + 1, damagePerTurn: damagePerT
       return (
         <div style={S.app}>
           {levelUpPopup}
-          <div style={{ maxWidth: 580, width: "100%", display: "flex", flexDirection: "column", gap: 0 }}>
+          <div style={{ maxWidth: 696, width: "100%", display: "flex", flexDirection: "column", gap: 0 }}>
             <PlayerHeader {...{ playerName, level, xp, xpToLevel, gold, hp, mana, stats }} />
             <div style={{ ...S.panel, border: "1px solid #ff8c0044", boxShadow: "0 0 24px #ff8c0022" }}>
               <div style={{ textAlign: "center", marginBottom: 12 }}>
