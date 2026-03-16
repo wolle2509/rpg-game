@@ -3958,40 +3958,38 @@ const heroUrl = "hero_sprite.png";
       
       // ℹ️ Nur Damage-Log wenn Schaden > 0
       if (damageAmount > 0) {
-        const damageLog = `${getStatusEmoji(enemyStatus.type)} ${enemy.name} takes ${damageAmount} damage from ${enemyStatus.type}!`;
-        setCombatLog(prev => [...prev, damageLog]);
-        
-        // Wende Schaden an
-        const newHp = enemyHp - damageAmount;
-        setEnemyHp(Math.max(0, newHp));
-        
-        // Prüfe auf Tod NACH HP-Berechnung
-        if (newHp <= 0) {
-          setCombatLog(cl => [...cl, `💀 ${enemy.name} died from ${enemyStatus.type}!`]);
-          setPlayerStatus({ type: null, duration: 0, damagePerTurn: 0 });
-          setEnemyStatus({ type: null, duration: 0, damagePerTurn: 0 });
-          setPlayerBuffs({ active: [] });
-          setEnemyBuffs({ active: [] });
-          setTimeout(() => {
-            if (enemy?.isTournamentFight) {
-              setTournament(prev => {
-                if (!prev) return prev;
-                const isFinal = prev.currentRound === 3;
-                if (isFinal) {
-                  setCompletedTournaments(s => new Set([...s, prev.capitalKey]));
-                  return { ...prev, phase: "done", finalLoot: null };
-                }
-                return { ...prev, currentRound: prev.currentRound + 1, phase: "between" };
-              });
-              setScreen("tournament");
+        const dmg = damageAmount;
+        const statusType = enemyStatus.type;
+        setCombatLog(prev => [...prev, `${getStatusEmoji(statusType)} ${enemy.name} takes ${dmg} damage from ${statusType}!`]);
+        setEnemyHp(prev => {
+          const newHp = Math.max(0, prev - dmg);
+          if (newHp <= 0) {
+            setCombatLog(cl => [...cl, `💀 ${enemy.name} died from ${statusType}!`]);
+            setPlayerStatus({ type: null, duration: 0, damagePerTurn: 0 });
+            setEnemyStatus({ type: null, duration: 0, damagePerTurn: 0 });
+            setPlayerBuffs({ active: [] });
+            setEnemyBuffs({ active: [] });
+            setTimeout(() => {
+              if (enemy?.isTournamentFight) {
+                setTournament(p => {
+                  if (!p) return p;
+                  const isFinal = p.currentRound === 3;
+                  if (isFinal) {
+                    setCompletedTournaments(s => new Set([...s, p.capitalKey]));
+                    return { ...p, phase: "done", finalLoot: null };
+                  }
+                  return { ...p, currentRound: p.currentRound + 1, phase: "between" };
+                });
+                setScreen("tournament");
+                setEnemy(null);
+                return;
+              }
+              setScreen("world");
               setEnemy(null);
-              return;
-            }
-            setScreen("world");
-            setEnemy(null);
-          }, 1500);
-          return { handled: true, newHp: Math.max(0, newHp), killed: true };
-        }
+            }, 1500);
+          }
+          return newHp;
+        });
       } else {
         // Slow & Stun: Nur Status-Info ohne Schaden
         const statusLog = enemyStatus.type === "slow" 
@@ -4012,11 +4010,10 @@ const heroUrl = "hero_sprite.png";
       });
       
       
-      // ✅ WICHTIG: Return den AKTUELLEN enemyHp statt zu hoffen dass State aktualisiert wird!
-      return { handled: true, newHp: enemyHp, killed: false };
+      return { handled: true };
     }
-    return { handled: false, newHp: enemyHp };
-  }, [enemyStatus, enemy, endCombat]);
+    return { handled: false };
+  }, [enemyStatus, enemy]);
 
   const applyPlayerStatus = useCallback((statusType, duration, damagePerTurn) => {
     // ✅ Nur wenn Player keinen Status hat - AKTUELLER playerStatus wird gecheckt
@@ -7926,3 +7923,4 @@ export default function RPGGame() {
     </>
   );
 }
+
