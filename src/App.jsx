@@ -2257,7 +2257,7 @@ function HeroImage({ size = 110, heroUrl }) {
   return <canvas ref={canvasRef} style={{ width: size, height: size }} />;
 }
 
-function SpriteImage({ spriteKey, size = 80, spriteSheetUrl }) {
+function SpriteImage({ spriteKey, size = 80 }) {
   const src = getEntityPng(spriteKey);
   if (!src) return <div style={{ width: size, height: size, display: "flex", alignItems: "center", justifyContent: "center", opacity: 0.3, fontSize: 32 }}>?</div>;
   return <img src={src} style={{ width: size, height: size, objectFit: "contain", imageRendering: "pixelated" }} alt={spriteKey} />;
@@ -3862,8 +3862,7 @@ const heroUrl = "hero_sprite.png";
           
           // Prüfe auf Tod — vollständiger Death-Flow
           if (newHp <= 0) {
-          if (enemy?.isTournamentFight) { if (!tournamentDefeatRef.current) handleTournamentDefeat(); return prev; }
-            if (enemy?.isTournamentFight) { if (!tournamentDefeatRef.current) handleTournamentDefeat(); return prev; }
+          if (enemy?.isTournamentFight) { handleTournamentDefeat(); return prev; }
             const goldLost = Math.floor(gold * 0.8);
             const itemsLost = inventory.length;
             setCombatLog(cl => [
@@ -4301,7 +4300,7 @@ return { type: statusType, duration: duration, damagePerTurn: damagePerTurn };
       setHp(prev => {
         const newHp = prev - enemyDmg;
         if (newHp <= 0) {
-          if (enemy?.isTournamentFight) { if (!tournamentDefeatRef.current) handleTournamentDefeat(); return prev; }
+          if (enemy?.isTournamentFight) { handleTournamentDefeat(); return prev; }
           // ✅ NEW: Entferne Status/Buffs beim Defeat
           setPlayerStatus({ type: null, duration: 0, damagePerTurn: 0 });
           setEnemyStatus({ type: null, duration: 0, damagePerTurn: 0 });
@@ -4491,7 +4490,7 @@ return { type: statusType, duration: duration, damagePerTurn: damagePerTurn };
       setHp(prev => {
         const newHp = prev - enemyDmg;
         if (newHp <= 0) {
-          if (enemy?.isTournamentFight) { if (!tournamentDefeatRef.current) handleTournamentDefeat(); return prev; }
+          if (enemy?.isTournamentFight) { handleTournamentDefeat(); return prev; }
           setCombatLog(cl => [...cl, enemy.isTournamentFight ? getTournamentCombatLog(enemy.name, enemyDmg, false, Date.now() + 1, true) : `${enemy.name} deals ${enemyDmg} damage!`, `💀 You have been defeated!`]);
           return stats.maxHp;
         }
@@ -4905,7 +4904,7 @@ return { type: statusType, duration: duration, damagePerTurn: damagePerTurn };
       setHp(prev => {
         const newHp = prev - enemyDmg;
         if (newHp <= 0) {
-          if (enemy?.isTournamentFight) { if (!tournamentDefeatRef.current) handleTournamentDefeat(); return prev; }
+          if (enemy?.isTournamentFight) { handleTournamentDefeat(); return prev; }
           // ✅ NEW: Entferne Status/Buffs beim Defeat
           setPlayerStatus({ type: null, duration: 0, damagePerTurn: 0 });
           setEnemyStatus({ type: null, duration: 0, damagePerTurn: 0 });
@@ -7923,4 +7922,3 @@ export default function RPGGame() {
     </>
   );
 }
-
