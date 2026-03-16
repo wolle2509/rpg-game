@@ -4257,9 +4257,18 @@ return { type: statusType, duration: duration, damagePerTurn: damagePerTurn };
       // ✅ NEW: Enemy Buff Decrement vor Counter-Attack
       handleEnemyBuffDecrement();
       
-      // ✅ NEW: Apply Status Damage FIRST before enemy counter-attack
-      handleEnemyStatusCheck();
-      
+      // Inline enemy status tick (avoids stale enemyHp closure)
+      if (enemyStatus.type && enemyStatus.duration > 0) {
+        let sDmg = 0;
+        if (enemyStatus.type === "burn")        sDmg = Math.ceil(enemy.maxHp * 0.10);
+        else if (enemyStatus.type === "bleed")  sDmg = Math.ceil(enemy.maxHp * 0.07);
+        else if (enemyStatus.type === "poison") sDmg = Math.ceil(enemy.maxHp * 0.05);
+        if (sDmg > 0) {
+          setCombatLog(prev => [...prev, `${getStatusEmoji(enemyStatus.type)} ${enemy.name} takes ${sDmg} damage from ${enemyStatus.type}!`]);
+          setEnemyHp(prev => Math.max(0, prev - sDmg));
+        }
+        setEnemyStatus(prev => { const d = Math.max(0, prev.duration - 1); return { ...prev, duration: d, type: d <= 0 ? null : prev.type }; });
+      }
       // ❌ NUR STUN blockiert die Attacke!
       if (enemyStatus.type === "stun" && enemyStatus.duration > 0) {
         setCombatLog(prev => [...prev, `😵 ${enemy.name} is stunned and cannot attack!`]);
@@ -4446,9 +4455,18 @@ return { type: statusType, duration: duration, damagePerTurn: damagePerTurn };
       // ✅ NEW: Enemy Buff Decrement vor Counter-Attack
       handleEnemyBuffDecrement();
       
-      // ✅ NEW: Apply Status Damage FIRST before enemy counter-attack
-      handleEnemyStatusCheck();
-      
+      // Inline enemy status tick (avoids stale enemyHp closure)
+      if (enemyStatus.type && enemyStatus.duration > 0) {
+        let sDmg = 0;
+        if (enemyStatus.type === "burn")        sDmg = Math.ceil(enemy.maxHp * 0.10);
+        else if (enemyStatus.type === "bleed")  sDmg = Math.ceil(enemy.maxHp * 0.07);
+        else if (enemyStatus.type === "poison") sDmg = Math.ceil(enemy.maxHp * 0.05);
+        if (sDmg > 0) {
+          setCombatLog(prev => [...prev, `${getStatusEmoji(enemyStatus.type)} ${enemy.name} takes ${sDmg} damage from ${enemyStatus.type}!`]);
+          setEnemyHp(prev => Math.max(0, prev - sDmg));
+        }
+        setEnemyStatus(prev => { const d = Math.max(0, prev.duration - 1); return { ...prev, duration: d, type: d <= 0 ? null : prev.type }; });
+      }
       // ❌ NUR STUN blockiert die Attacke!
       if (enemyStatus.type === "stun" && enemyStatus.duration > 0) {
         setCombatLog(prev => [...prev, `😵 ${enemy.name} is stunned and cannot attack!`]);
@@ -4560,11 +4578,9 @@ return { type: statusType, duration: duration, damagePerTurn: damagePerTurn };
     }
     
     const newEnemyHp = enemyHp - playerDmg;
-    const combatMsg = enemy.isTournamentFight
-      ? getTournamentCombatLog(enemy.name, playerDmg, isCrit, Date.now())
-      : isCrit
-        ? `💥 CRITICAL HIT! You deal ${playerDmg} damage to ${enemy.name}!`
-        : `You deal ${playerDmg} damage to ${enemy.name}!`;
+    const combatMsg = isCrit
+      ? `💥 CRITICAL HIT! You deal ${playerDmg} damage to ${enemy.name}!`
+      : `You deal ${playerDmg} damage to ${enemy.name}!`;
     const newCombatLog = [...combatLog, combatMsg];
 
     // ✅ VISUAL: Floating Damage Text IM ROTEN KREIS (Enemy, oben rechts)
@@ -4657,13 +4673,24 @@ return { type: statusType, duration: duration, damagePerTurn: damagePerTurn };
       return;
     }
 
-    setEnemyHp(newEnemyHp);
+    // Apply enemy status tick BEFORE setting HP, using newEnemyHp as base
+    let statusAdjustedEnemyHp = newEnemyHp;
+    if (enemyStatus.type && enemyStatus.duration > 0) {
+      let bleedDmg = 0;
+      if (enemyStatus.type === "burn")        bleedDmg = Math.ceil(enemy.maxHp * 0.10);
+      else if (enemyStatus.type === "bleed")  bleedDmg = Math.ceil(enemy.maxHp * 0.07);
+      else if (enemyStatus.type === "poison") bleedDmg = Math.ceil(enemy.maxHp * 0.05);
+      if (bleedDmg > 0) {
+        newCombatLog.push(`${getStatusEmoji(enemyStatus.type)} ${enemy.name} takes ${bleedDmg} damage from ${enemyStatus.type}!`);
+        statusAdjustedEnemyHp = Math.max(0, statusAdjustedEnemyHp - bleedDmg);
+      }
+      setEnemyStatus(prev => { const d = Math.max(0, prev.duration - 1); return { ...prev, duration: d, type: d <= 0 ? null : prev.type }; });
+    }
+    setEnemyHp(statusAdjustedEnemyHp);
+    setCombatLog(newCombatLog);
 
     // ✅ NEW: Enemy Buff Decrement vor Counter-Attack
     handleEnemyBuffDecrement();
-
-    // ✅ Apply Status Damage - enemy status tick only (player status already ticked at turn start)
-    handleEnemyStatusCheck();
     
     // ❌ NUR STUN blockiert die Attacke!
     if (enemyStatus.type === "stun" && enemyStatus.duration > 0) {
@@ -4693,8 +4720,18 @@ return { type: statusType, duration: duration, damagePerTurn: damagePerTurn };
       const specialId = enemy.specials[Math.floor(Math.random() * enemy.specials.length)];
       const special = SPECIALS.find(s => s.id === specialId);
       if (special) {
-        // Apply status tick before NPC special (enemy only)
-        handleEnemyStatusCheck();
+        // Inline enemy status tick before NPC special
+        if (enemyStatus.type && enemyStatus.duration > 0) {
+          let sDmg = 0;
+          if (enemyStatus.type === "burn")        sDmg = Math.ceil(enemy.maxHp * 0.10);
+          else if (enemyStatus.type === "bleed")  sDmg = Math.ceil(enemy.maxHp * 0.07);
+          else if (enemyStatus.type === "poison") sDmg = Math.ceil(enemy.maxHp * 0.05);
+          if (sDmg > 0) {
+            newCombatLog.push(`${getStatusEmoji(enemyStatus.type)} ${enemy.name} takes ${sDmg} damage from ${enemyStatus.type}!`);
+            setEnemyHp(prev => Math.max(0, prev - sDmg));
+          }
+          setEnemyStatus(prev => { const d = Math.max(0, prev.duration - 1); return { ...prev, duration: d, type: d <= 0 ? null : prev.type }; });
+        }
         const hpCost = Math.ceil(enemy.maxHp * (special.hpCostPercent || 0));
         const baseDmg = randInt(special.dmgRange[0], special.dmgRange[1]);
         const hits = special.hitCount || 1;
@@ -4845,9 +4882,18 @@ return { type: statusType, duration: duration, damagePerTurn: damagePerTurn };
       setScreen("world");
       setEnemy(null);
     } else {
-      // ✅ NEW: Apply Status Damage FIRST before enemy counter-attack
-      handleEnemyStatusCheck();
-      
+      // Inline enemy status tick (avoids stale enemyHp closure)
+      if (enemyStatus.type && enemyStatus.duration > 0) {
+        let sDmg = 0;
+        if (enemyStatus.type === "burn")        sDmg = Math.ceil(enemy.maxHp * 0.10);
+        else if (enemyStatus.type === "bleed")  sDmg = Math.ceil(enemy.maxHp * 0.07);
+        else if (enemyStatus.type === "poison") sDmg = Math.ceil(enemy.maxHp * 0.05);
+        if (sDmg > 0) {
+          setCombatLog(prev => [...prev, `${getStatusEmoji(enemyStatus.type)} ${enemy.name} takes ${sDmg} damage from ${enemyStatus.type}!`]);
+          setEnemyHp(prev => Math.max(0, prev - sDmg));
+        }
+        setEnemyStatus(prev => { const d = Math.max(0, prev.duration - 1); return { ...prev, duration: d, type: d <= 0 ? null : prev.type }; });
+      }
       const dodged = Math.random() < stats.dodgeChance;
       if (dodged) {
         setCombatLog(prev => [...prev, `Failed to flee! But you dodged ${enemy.name}'s attack! 🌀`]);
@@ -4887,8 +4933,18 @@ return { type: statusType, duration: duration, damagePerTurn: damagePerTurn };
     const playerY = 130;  // Grünen Kreis Mitte Y
     addFloatingDamage(`+${healAmount}`, playerX, playerY, false, true);
 
-    // ✅ NEW: Apply Status Damage FIRST before enemy counter-attack
-    handleEnemyStatusCheck();
+    // Inline enemy status tick (avoids stale enemyHp closure)
+    if (enemyStatus.type && enemyStatus.duration > 0) {
+      let sDmg = 0;
+      if (enemyStatus.type === "burn")      sDmg = Math.ceil(enemy.maxHp * 0.10);
+      else if (enemyStatus.type === "bleed")  sDmg = Math.ceil(enemy.maxHp * 0.07);
+      else if (enemyStatus.type === "poison") sDmg = Math.ceil(enemy.maxHp * 0.05);
+      if (sDmg > 0) {
+        setCombatLog(prev => [...prev, `${getStatusEmoji(enemyStatus.type)} ${enemy.name} takes ${sDmg} damage from ${enemyStatus.type}!`]);
+        setEnemyHp(prev => Math.max(0, prev - sDmg));
+      }
+      setEnemyStatus(prev => { const d = Math.max(0, prev.duration - 1); return { ...prev, duration: d, type: d <= 0 ? null : prev.type }; });
+    }
 
     // Enemy counterattack (can be dodged)
     const dodged = Math.random() < stats.dodgeChance;
@@ -7922,3 +7978,4 @@ export default function RPGGame() {
     </>
   );
 }
+
