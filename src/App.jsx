@@ -4748,57 +4748,9 @@ const ns = { type: statusType, duration: duration + 1, damagePerTurn: damagePerT
     // ✅ NEW: Enemy Buff Decrement vor Counter-Attack
     handleEnemyBuffDecrement();
 
-    // ✅ Apply Status Damage using refs (always current values)
-    {
-      const curPS = playerStatusRef.current;
-      const curES = enemyStatusRef.current;
-      const statusLogs = [];
-      if (curES.type && curES.duration > 0) {
-        let dmg = 0;
-        if (curES.type === "burn")   dmg = Math.ceil(enemy.maxHp * 0.10);
-        else if (curES.type === "bleed")  dmg = Math.ceil(enemy.maxHp * 0.07);
-        else if (curES.type === "poison") dmg = Math.ceil(enemy.maxHp * 0.05);
-        if (dmg > 0) {
-          statusLogs.push(`${getStatusEmoji(curES.type)} ${enemy.name} takes ${dmg} damage from ${curES.type}!`);
-          const afterStatusHp = enemyHp - dmg;
-          setEnemyHp(Math.max(0, afterStatusHp));
-          if (afterStatusHp <= 0) {
-            if (statusLogs.length > 0) setCombatLog(prev => [...prev, ...statusLogs]);
-            endCombat();
-            return;
-          }
-        }
-        setEnemyStatus(prev => { 
-          const d = Math.max(0, prev.duration - 1); 
-          const next = { ...prev, duration: d, type: d <= 0 ? null : prev.type };
-          enemyStatusRef.current = next;
-          return next;
-        });
-      }
-      if (curPS.type && curPS.duration > 0) {
-        let dmg = 0;
-        if (curPS.type === "burn")   dmg = Math.ceil(stats.maxHp * 0.10);
-        else if (curPS.type === "bleed")  dmg = Math.ceil(stats.maxHp * 0.07);
-        else if (curPS.type === "poison") dmg = Math.ceil(stats.maxHp * 0.05);
-        if (dmg > 0) {
-          statusLogs.push(`${getStatusEmoji(curPS.type)} You take ${dmg} damage from ${curPS.type}!`);
-          const afterStatusPlayerHp = hp - dmg;
-          setHp(Math.max(0, afterStatusPlayerHp));
-          if (afterStatusPlayerHp <= 0 && enemy?.isTournamentFight) {
-            if (statusLogs.length > 0) setCombatLog(prev => [...prev, ...statusLogs]);
-            handleTournamentDefeat();
-            return;
-          }
-        }
-        setPlayerStatus(prev => { 
-          const d = Math.max(0, prev.duration - 1); 
-          const next = { ...prev, duration: d, type: d <= 0 ? null : prev.type };
-          playerStatusRef.current = next;
-          return next;
-        });
-      }
-      if (statusLogs.length > 0) setCombatLog(prev => [...prev, ...statusLogs]);
-    }
+    // ✅ Apply Status Damage - same functions as normal combat
+    handleEnemyStatusCheck();
+    handlePlayerStatusCheck();
     
     // ❌ NUR STUN blockiert die Attacke!
     if (enemyStatus.type === "stun" && enemyStatus.duration > 0) {
@@ -4828,29 +4780,9 @@ const ns = { type: statusType, duration: duration + 1, damagePerTurn: damagePerT
       const specialId = enemy.specials[Math.floor(Math.random() * enemy.specials.length)];
       const special = SPECIALS.find(s => s.id === specialId);
       if (special) {
-        // Apply status DoT tick BEFORE this attack using refs
-        {
-          const curPS = playerStatusRef.current;
-          const curES = enemyStatusRef.current;
-          const sLogs = [];
-          if (curES.type && curES.duration > 0) {
-            let dmg = 0;
-            if (curES.type === "burn") dmg = Math.ceil(enemy.maxHp * 0.10);
-            else if (curES.type === "bleed") dmg = Math.ceil(enemy.maxHp * 0.07);
-            else if (curES.type === "poison") dmg = Math.ceil(enemy.maxHp * 0.05);
-            if (dmg > 0) { sLogs.push(`${getStatusEmoji(curES.type)} ${enemy.name} takes ${dmg} damage!`); setEnemyHp(prev => Math.max(0, prev - dmg)); }
-            setEnemyStatus(prev => { const d = Math.max(0, prev.duration - 1); return { ...prev, duration: d, type: d <= 0 ? null : prev.type }; });
-          }
-          if (curPS.type && curPS.duration > 0) {
-            let dmg = 0;
-            if (curPS.type === "burn") dmg = Math.ceil(stats.maxHp * 0.10);
-            else if (curPS.type === "bleed") dmg = Math.ceil(stats.maxHp * 0.07);
-            else if (curPS.type === "poison") dmg = Math.ceil(stats.maxHp * 0.05);
-            if (dmg > 0) { sLogs.push(`${getStatusEmoji(curPS.type)} You take ${dmg} damage!`); setHp(prev => Math.max(0, prev - dmg)); }
-            setPlayerStatus(prev => { const d = Math.max(0, prev.duration - 1); return { ...prev, duration: d, type: d <= 0 ? null : prev.type }; });
-          }
-          if (sLogs.length > 0) setCombatLog(prev => [...prev, ...sLogs]);
-        }
+        // Apply status tick before NPC special
+        handleEnemyStatusCheck();
+        handlePlayerStatusCheck();
         const hpCost = Math.ceil(enemy.maxHp * (special.hpCostPercent || 0));
         const baseDmg = randInt(special.dmgRange[0], special.dmgRange[1]);
         const hits = special.hitCount || 1;
@@ -7565,15 +7497,26 @@ const ns = { type: statusType, duration: duration + 1, damagePerTurn: damagePerT
             }}>
               {/* Player */}
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, flex: 1 }}>
-                <div style={{
-                  width: 180, height: 180, borderRadius: 16,
-                  background: "radial-gradient(circle, #0d0a12, #060408)",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  overflow: "hidden",
-                }}>
+                <div style={{ width: 180, height: 180, borderRadius: 16, background: "radial-gradient(circle, #0d0a12, #060408)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
                   <HeroImage size={165} heroUrl={heroUrl} />
                 </div>
                 <div style={{ fontWeight: 700, fontSize: 16 }}>{playerName}</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#facc15" }}>Lv.{level}</div>
+                {playerStatus.type && playerStatus.duration > 0 && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 4, background: playerStatus.type === "burn" ? "rgba(255,107,53,0.15)" : playerStatus.type === "bleed" ? "rgba(196,30,58,0.15)" : playerStatus.type === "poison" ? "rgba(74,222,128,0.15)" : playerStatus.type === "slow" ? "rgba(96,165,250,0.15)" : "rgba(251,191,36,0.15)", padding: "4px 8px", borderRadius: 4, fontSize: 14, fontWeight: 700, border: playerStatus.type === "burn" ? "1px solid rgba(255,107,53,0.4)" : playerStatus.type === "bleed" ? "1px solid rgba(196,30,58,0.4)" : playerStatus.type === "poison" ? "1px solid rgba(74,222,128,0.4)" : playerStatus.type === "slow" ? "1px solid rgba(96,165,250,0.4)" : "1px solid rgba(251,191,36,0.4)" }}>
+                    <span style={{ fontSize: 16 }}>{getStatusEmoji(playerStatus.type)}</span>
+                    <span style={{ color: playerStatus.type === "burn" ? "#ff6b35" : playerStatus.type === "bleed" ? "#c41e3a" : playerStatus.type === "poison" ? "#3aaa60" : playerStatus.type === "slow" ? "#4a7ab8" : "#fbbf24" }}>{playerStatus.duration}</span>
+                  </div>
+                )}
+                {playerBuffs.active.length > 0 && (
+                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "center" }}>
+                    {playerBuffs.active.map(buff => (
+                      <div key={buff.type} style={{ display: "flex", alignItems: "center", gap: 3, padding: "3px 6px", borderRadius: 4, fontSize: 12, fontWeight: 700, background: buff.type === "critBoost" ? "rgba(255,215,0,0.2)" : buff.type === "defense" ? "rgba(100,180,255,0.2)" : "rgba(100,200,150,0.2)", border: buff.type === "critBoost" ? "1px solid rgba(255,215,0,0.4)" : buff.type === "defense" ? "1px solid rgba(100,180,255,0.4)" : "1px solid rgba(100,200,150,0.4)", color: buff.type === "critBoost" ? "#ffd700" : buff.type === "defense" ? "#64b4ff" : "#64c896" }}>
+                        <span>{getBuffEmoji(buff.type)}</span><span>{buff.charges || buff.duration}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <div style={{ width: "100%", maxWidth: 180 }}>
                   <HealthBar current={hp} max={stats.maxHp} pulse />
                   <HealthBar current={mana} max={stats.maxMana} isMana />
@@ -7583,15 +7526,18 @@ const ns = { type: statusType, duration: duration + 1, damagePerTurn: damagePerT
               <div style={{ fontSize: 28, fontWeight: 900, color: "#b8962a", textShadow: "0 0 12px #b8962a66", padding: "0 6px" }}>VS</div>
               {/* Enemy */}
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, flex: 1 }}>
-                <div style={{
-                  width: 180, height: 180, borderRadius: 16,
-                  background: "radial-gradient(circle, #0d0a12, #060408)",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  overflow: "hidden",
-                }}>
+                <div style={{ width: 180, height: 180, borderRadius: 16, background: "radial-gradient(circle, #0d0a12, #060408)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
                   <SpriteImage spriteKey={enemy.name?.toLowerCase().replace(/ /g, "_")} size={165} spriteSheetUrl={null} />
                 </div>
-                <div style={{ fontWeight: 700, fontSize: 16, color: opp ? (TOURNAMENT_RARITIES[opp.rarityIdx]?.color || "#c04848") : "#c04848" }}>{enemy.name}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ fontWeight: 700, fontSize: 16, color: opp ? (TOURNAMENT_RARITIES[opp.rarityIdx]?.color || "#c04848") : "#c04848" }}>{enemy.name}</div>
+                  {enemyStatus.type && enemyStatus.duration > 0 && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 4, background: enemyStatus.type === "burn" ? "rgba(255,107,53,0.15)" : enemyStatus.type === "bleed" ? "rgba(196,30,58,0.15)" : enemyStatus.type === "poison" ? "rgba(74,222,128,0.15)" : enemyStatus.type === "slow" ? "rgba(96,165,250,0.15)" : "rgba(251,191,36,0.15)", padding: "4px 8px", borderRadius: 4, fontSize: 14, fontWeight: 700, border: enemyStatus.type === "burn" ? "1px solid rgba(255,107,53,0.4)" : enemyStatus.type === "bleed" ? "1px solid rgba(196,30,58,0.4)" : enemyStatus.type === "poison" ? "1px solid rgba(74,222,128,0.4)" : enemyStatus.type === "slow" ? "1px solid rgba(96,165,250,0.4)" : "1px solid rgba(251,191,36,0.4)" }}>
+                      <span style={{ fontSize: 16 }}>{getStatusEmoji(enemyStatus.type)}</span>
+                      <span style={{ color: enemyStatus.type === "burn" ? "#ff6b35" : enemyStatus.type === "bleed" ? "#c41e3a" : enemyStatus.type === "poison" ? "#3aaa60" : enemyStatus.type === "slow" ? "#4a7ab8" : "#fbbf24" }}>{enemyStatus.duration}</span>
+                    </div>
+                  )}
+                </div>
                 <div style={{ fontSize: 12, opacity: 0.6, marginTop: -4 }}>{opp?.label}</div>
                 <div style={{ width: "100%", maxWidth: 180 }}>
                   <HealthBar current={enemyHp} max={enemy.maxHp} isEnemy />
@@ -7602,21 +7548,6 @@ const ns = { type: statusType, duration: duration + 1, damagePerTurn: damagePerT
                 ))}
               </div>
             </div>
-            {/* Status effects */}
-            {(playerStatus.type || enemyStatus.type) && (
-              <div style={{ display: "flex", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
-                {playerStatus.type && playerStatus.duration > 0 && (
-                  <span style={{ fontSize: 12, padding: "2px 8px", borderRadius: 4, background: "#c04848aa", color: "#fff" }}>
-                    {getStatusEmoji(playerStatus.type)} You: {playerStatus.type} ({playerStatus.duration})
-                  </span>
-                )}
-                {enemyStatus.type && enemyStatus.duration > 0 && (
-                  <span style={{ fontSize: 12, padding: "2px 8px", borderRadius: 4, background: "#3aaa60aa", color: "#fff" }}>
-                    {getStatusEmoji(enemyStatus.type)} {enemy.name}: {enemyStatus.type} ({enemyStatus.duration})
-                  </span>
-                )}
-              </div>
-            )}
             <div style={{ minHeight: 80, maxHeight: 120, overflowY: "auto", fontSize: 14, opacity: 0.8, margin: "8px 0", padding: "6px 8px", background: "#ffffff06", borderRadius: 6 }}>
               {combatLog.slice(-5).map((l, i) => <div key={i}>{l}</div>)}
             </div>
