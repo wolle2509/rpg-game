@@ -3059,8 +3059,8 @@ function InventoryPanel({ stackedInventory, inventory, currentCity, useItem, equ
   };
   return (
     <div style={{
-      position: "fixed", bottom: 60, left: 8, zIndex: 999,
-      width: "calc(25% - 14px)", maxHeight: "70vh", overflowY: "auto",
+      position: "fixed", bottom: 60, left: "calc(0% + 8px)", zIndex: 999,
+      width: "calc(20% - 14px)", maxHeight: "70vh", overflowY: "auto",
       background: "rgba(8,6,12,0.97)", border: "1px solid #b8962a66",
       borderRadius: 10, padding: 14, boxShadow: "0 4px 24px #000c",
     }}>
@@ -3225,8 +3225,8 @@ function SkillsPanel({ learnedAbilities, onClose }) {
   const learnedSpecials = SPECIALS.filter(s => learnedAbilities.specials.includes(s.id));
   return (
     <div style={{
-      position: "fixed", bottom: 60, right: 8, zIndex: 999,
-      width: "calc(20% - 12px)", maxHeight: "70vh", overflowY: "auto",
+      position: "fixed", bottom: 60, right: "calc(0% + 8px)", zIndex: 999,
+      width: "calc(20% - 14px)", maxHeight: "70vh", overflowY: "auto",
       background: "rgba(8,6,12,0.97)", border: "1px solid rgba(168,85,247,0.4)",
       borderRadius: 10, padding: 14, boxShadow: "0 4px 24px #000c",
     }}>
@@ -3236,6 +3236,22 @@ function SkillsPanel({ learnedAbilities, onClose }) {
       </div>
       {learnedSpells.length > 0 && <>{sectionLabel("🔵 Spells", "(Mana)")}{learnedSpells.map(s => renderSkill(s, "spell"))}</>}
       {learnedSpecials.length > 0 && <>{sectionLabel("🔴 Specials", "(HP)")}{learnedSpecials.map(s => renderSkill(s, "special"))}</>}
+      {sectionLabel("⚡ Status Effects", "")}
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        {[
+          { emoji: "🔥", name: "Burn",   desc: "10% max HP per round" },
+          { emoji: "🩸", name: "Bleed",  desc: "7% max HP per round"  },
+          { emoji: "☠️", name: "Poison", desc: "5% max HP per round"  },
+          { emoji: "❄️", name: "Slow",   desc: "-50% attack damage"   },
+          { emoji: "😵", name: "Stun",   desc: "Skip next attack"     },
+        ].map(s => (
+          <div key={s.name} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 0" }}>
+            <span style={{ fontSize: 15, width: 20, textAlign: "center" }}>{s.emoji}</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "#c8bfb0", width: 52 }}>{s.name}</span>
+            <span style={{ fontSize: 12, opacity: 0.5 }}>{s.desc}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -4157,8 +4173,7 @@ return { type: statusType, duration: duration, damagePerTurn: damagePerTurn };
     if (spell.hitCount) {
       for (let i = 0; i < spell.hitCount; i++) {
         const baseDmg = randInt(spell.dmgRange[0], spell.dmgRange[1]);
-        const equipBonus = Math.floor(stats.damage * 0.5);
-        const dmg = baseDmg + equipBonus;
+        const dmg = baseDmg;
         totalDmg += dmg;
       }
       logMsg += `${totalDmg} damage (${spell.hitCount}x)!`;
@@ -4176,8 +4191,7 @@ return { type: statusType, duration: duration, damagePerTurn: damagePerTurn };
       return;
     } else {
       const baseDmg = randInt(spell.dmgRange[0], spell.dmgRange[1]);
-      const equipBonus = Math.floor(stats.damage * 0.5);
-      totalDmg = baseDmg + equipBonus;
+      totalDmg = baseDmg;
       
       // Prüfe Crit
       if (critBoostBuff && critBoostBuff.charges > 0) {
@@ -4265,7 +4279,11 @@ return { type: statusType, duration: duration, damagePerTurn: damagePerTurn };
         else if (enemyStatus.type === "poison") sDmg = Math.ceil(enemy.maxHp * 0.05);
         if (sDmg > 0) {
           setCombatLog(prev => [...prev, `${getStatusEmoji(enemyStatus.type)} ${enemy.name} takes ${sDmg} damage from ${enemyStatus.type}!`]);
-          setEnemyHp(prev => Math.max(0, prev - sDmg));
+          setEnemyHp(prev => {
+            const after = Math.max(0, prev - sDmg);
+            if (after <= 0) { setEnemyStatus({ type: null, duration: 0, damagePerTurn: 0 }); endCombat(); }
+            return after;
+          });
         }
         setEnemyStatus(prev => { const d = Math.max(0, prev.duration - 1); return { ...prev, duration: d, type: d <= 0 ? null : prev.type }; });
       }
@@ -4356,15 +4374,13 @@ return { type: statusType, duration: duration, damagePerTurn: damagePerTurn };
     if (special.hitCount) {
       for (let i = 0; i < special.hitCount; i++) {
         const baseDmg = randInt(special.dmgRange[0], special.dmgRange[1]);
-        const equipBonus = stats.damage;
-        const dmg = baseDmg + equipBonus;
+        const dmg = baseDmg;
         totalDmg += dmg;
       }
       logMsg += `${totalDmg} damage (${special.hitCount}x)!`;
     } else {
       const baseDmg = randInt(special.dmgRange[0], special.dmgRange[1]);
-      const equipBonus = stats.damage;
-      totalDmg = baseDmg + equipBonus;
+      totalDmg = baseDmg;
       
       // Prüfe Crit
       if (critBoostBuff && critBoostBuff.charges > 0) {
@@ -4423,9 +4439,23 @@ return { type: statusType, duration: duration, damagePerTurn: damagePerTurn };
     }
 
     if (special.effect === "bleed") {
-      // Bleed: 7% HP für 3 Runden
       if (newEnemyHp > 0) {
         applyEnemyStatus("bleed", 3, 0);
+        // Apply first bleed tick after a short delay so HP bar shows 2 separate ticks
+        const firstBleedDmg = Math.ceil(enemy.maxHp * 0.07);
+        setTimeout(() => {
+          setCombatLog(prev => [...prev, `🩸 ${enemy.name} takes ${firstBleedDmg} damage from bleed!`]);
+          setEnemyHp(prev => {
+            const afterBleed = Math.max(0, prev - firstBleedDmg);
+            if (afterBleed <= 0) {
+              setEnemyStatus({ type: null, duration: 0, damagePerTurn: 0 });
+              endCombat();
+            } else {
+              setEnemyStatus(prev => prev.type === "bleed" ? { ...prev, duration: Math.max(0, prev.duration - 1), type: prev.duration - 1 <= 0 ? null : prev.type } : prev);
+            }
+            return afterBleed;
+          });
+        }, 250);
       }
     } else if (special.effect === "crit") {
       // ✅ NEW: Berserk/Overdrive geben Crit Boost
@@ -4463,7 +4493,11 @@ return { type: statusType, duration: duration, damagePerTurn: damagePerTurn };
         else if (enemyStatus.type === "poison") sDmg = Math.ceil(enemy.maxHp * 0.05);
         if (sDmg > 0) {
           setCombatLog(prev => [...prev, `${getStatusEmoji(enemyStatus.type)} ${enemy.name} takes ${sDmg} damage from ${enemyStatus.type}!`]);
-          setEnemyHp(prev => Math.max(0, prev - sDmg));
+          setEnemyHp(prev => {
+            const after = Math.max(0, prev - sDmg);
+            if (after <= 0) { setEnemyStatus({ type: null, duration: 0, damagePerTurn: 0 }); endCombat(); }
+            return after;
+          });
         }
         setEnemyStatus(prev => { const d = Math.max(0, prev.duration - 1); return { ...prev, duration: d, type: d <= 0 ? null : prev.type }; });
       }
@@ -4728,7 +4762,11 @@ return { type: statusType, duration: duration, damagePerTurn: damagePerTurn };
           else if (enemyStatus.type === "poison") sDmg = Math.ceil(enemy.maxHp * 0.05);
           if (sDmg > 0) {
             newCombatLog.push(`${getStatusEmoji(enemyStatus.type)} ${enemy.name} takes ${sDmg} damage from ${enemyStatus.type}!`);
-            setEnemyHp(prev => Math.max(0, prev - sDmg));
+            setEnemyHp(prev => {
+            const after = Math.max(0, prev - sDmg);
+            if (after <= 0) { setEnemyStatus({ type: null, duration: 0, damagePerTurn: 0 }); endCombat(); }
+            return after;
+          });
           }
           setEnemyStatus(prev => { const d = Math.max(0, prev.duration - 1); return { ...prev, duration: d, type: d <= 0 ? null : prev.type }; });
         }
@@ -4890,7 +4928,11 @@ return { type: statusType, duration: duration, damagePerTurn: damagePerTurn };
         else if (enemyStatus.type === "poison") sDmg = Math.ceil(enemy.maxHp * 0.05);
         if (sDmg > 0) {
           setCombatLog(prev => [...prev, `${getStatusEmoji(enemyStatus.type)} ${enemy.name} takes ${sDmg} damage from ${enemyStatus.type}!`]);
-          setEnemyHp(prev => Math.max(0, prev - sDmg));
+          setEnemyHp(prev => {
+            const after = Math.max(0, prev - sDmg);
+            if (after <= 0) { setEnemyStatus({ type: null, duration: 0, damagePerTurn: 0 }); endCombat(); }
+            return after;
+          });
         }
         setEnemyStatus(prev => { const d = Math.max(0, prev.duration - 1); return { ...prev, duration: d, type: d <= 0 ? null : prev.type }; });
       }
@@ -4941,7 +4983,11 @@ return { type: statusType, duration: duration, damagePerTurn: damagePerTurn };
       else if (enemyStatus.type === "poison") sDmg = Math.ceil(enemy.maxHp * 0.05);
       if (sDmg > 0) {
         setCombatLog(prev => [...prev, `${getStatusEmoji(enemyStatus.type)} ${enemy.name} takes ${sDmg} damage from ${enemyStatus.type}!`]);
-        setEnemyHp(prev => Math.max(0, prev - sDmg));
+        setEnemyHp(prev => {
+          const after = Math.max(0, prev - sDmg);
+          if (after <= 0) { setEnemyStatus({ type: null, duration: 0, damagePerTurn: 0 }); endCombat(); }
+          return after;
+        });
       }
       setEnemyStatus(prev => { const d = Math.max(0, prev.duration - 1); return { ...prev, duration: d, type: d <= 0 ? null : prev.type }; });
     }
@@ -5453,8 +5499,8 @@ return { type: statusType, duration: duration, damagePerTurn: damagePerTurn };
       </div>
       {questLogOpen && (
         <div style={{
-          position: "fixed", bottom: 60, right: 8, zIndex: 999,
-          width: 380, maxHeight: "60vh", overflowY: "auto",
+          position: "fixed", bottom: 60, right: "calc(20% + 4px)", zIndex: 999,
+          width: "calc(20% - 14px)", maxHeight: "60vh", overflowY: "auto",
           background: "rgba(8,6,12,0.97)", border: "1px solid #b8962a66",
           borderRadius: 10, padding: 14, boxShadow: "0 4px 24px #000c",
         }}>
@@ -5520,8 +5566,8 @@ return { type: statusType, duration: duration, damagePerTurn: damagePerTurn };
       />}
       {charWindowOpen && (
         <div style={{
-          position: "fixed", bottom: 60, left: "calc(25% + 8px)", zIndex: 999,
-          width: 420, maxHeight: "70vh", overflowY: "auto",
+          position: "fixed", bottom: 60, left: "calc(20% + 4px)", zIndex: 999,
+          width: "calc(40% - 14px)", maxHeight: "70vh", overflowY: "auto",
           background: "rgba(8,6,12,0.97)", border: "1px solid #b8962a66",
           borderRadius: 10, padding: 18, boxShadow: "0 4px 24px #000c",
         }}>
@@ -6622,6 +6668,27 @@ return { type: statusType, duration: duration, damagePerTurn: damagePerTurn };
                 <button onClick={flee} style={{ ...S.btn, flex: 1, minWidth: 80 }} disabled={enemyHp <= 0}>🏃 Flee</button>
               </div>
               {combatItemsOpen && enemyHp > 0 && <CombatItemsPanel inventory={inventory} useItemInCombat={useItemInCombat} />}
+              {/* Status Effects Legend */}
+              {skillsOpen && (
+                <div style={{ background: "#ffffff05", borderRadius: 8, padding: "8px 12px", marginBottom: 12, border: "1px solid #ffffff11" }}>
+                  <div style={{ fontSize: 12, opacity: 0.5, marginBottom: 6, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase" }}>Status Effects</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 16px" }}>
+                    {[
+                      { emoji: "🔥", name: "Burn",   desc: "10% max HP/round" },
+                      { emoji: "🩸", name: "Bleed",  desc: "7% max HP/round"  },
+                      { emoji: "☠️", name: "Poison", desc: "5% max HP/round"  },
+                      { emoji: "❄️", name: "Slow",   desc: "-50% atk damage"  },
+                      { emoji: "😵", name: "Stun",   desc: "skip attack"      },
+                    ].map(s => (
+                      <div key={s.name} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12 }}>
+                        <span>{s.emoji}</span>
+                        <span style={{ fontWeight: 700, opacity: 0.9 }}>{s.name}</span>
+                        <span style={{ opacity: 0.5 }}>{s.desc}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {/* ✅ NEW: Combined SKILLS (Spells + Specials) */}
               {skillsOpen && enemyHp > 0 && (learnedAbilities.spells.length > 0 || learnedAbilities.specials.length > 0) && (
                 <div style={{ background: "#1a3a5a11", borderRadius: 8, padding: 12, marginBottom: 12, border: "1px solid #4169E133" }}>
@@ -7524,6 +7591,27 @@ return { type: statusType, duration: duration, damagePerTurn: damagePerTurn };
               <button onClick={() => setSkillsOpen(prev => !prev)} style={{ ...S.btn, flex: 1, minWidth: 80, borderColor: "#a0c4ff", color: "#a0c4ff" }} disabled={enemyHp <= 0 || (learnedAbilities.spells.length === 0 && learnedAbilities.specials.length === 0)}>✨ Skills</button>
               <button onClick={flee} style={{ ...S.btn, flex: 1, minWidth: 80 }} disabled={enemyHp <= 0}>🏳️ Forfeit</button>
             </div>
+            {/* Status Effects Legend */}
+            {skillsOpen && (
+              <div style={{ background: "#ffffff05", borderRadius: 8, padding: "8px 12px", marginBottom: 12, border: "1px solid #ffffff11" }}>
+                <div style={{ fontSize: 12, opacity: 0.5, marginBottom: 6, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase" }}>Status Effects</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 16px" }}>
+                  {[
+                    { emoji: "🔥", name: "Burn",   desc: "10% max HP/round" },
+                    { emoji: "🩸", name: "Bleed",  desc: "7% max HP/round"  },
+                    { emoji: "☠️", name: "Poison", desc: "5% max HP/round"  },
+                    { emoji: "❄️", name: "Slow",   desc: "-50% atk damage"  },
+                    { emoji: "😵", name: "Stun",   desc: "skip attack"      },
+                  ].map(s => (
+                    <div key={s.name} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12 }}>
+                      <span>{s.emoji}</span>
+                      <span style={{ fontWeight: 700, opacity: 0.9 }}>{s.name}</span>
+                      <span style={{ opacity: 0.5 }}>{s.desc}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {skillsOpen && enemyHp > 0 && (learnedAbilities.spells.length > 0 || learnedAbilities.specials.length > 0) && (
               <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {learnedAbilities.spells.map(sid => {
@@ -7978,4 +8066,3 @@ export default function RPGGame() {
     </>
   );
 }
-
